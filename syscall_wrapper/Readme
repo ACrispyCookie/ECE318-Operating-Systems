@@ -1,0 +1,3 @@
+gcc -Wall -g -c syscall_wrapper.c -o syscall_wrapper.o
+ar rcs libhello_syscall_wrapper.a syscall_wrapper.o
+gcc -Wall -g hello.c -o hello -lhello_syscall_wrapper -L./

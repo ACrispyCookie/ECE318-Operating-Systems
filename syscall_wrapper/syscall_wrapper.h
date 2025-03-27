@@ -1,0 +1,1 @@
+int hello_syscall_wrapper(void);
