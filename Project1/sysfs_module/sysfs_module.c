@@ -10,7 +10,7 @@
 
 static struct kobject *team_kobject;
 
-static ssize_t find_roots(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+static ssize_t on_file_read(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
     printk("find_roots system call called by process %d\n", current->pid);
     
     struct task_struct *process;
@@ -24,7 +24,7 @@ static ssize_t find_roots(struct kobject *kobj, struct kobj_attribute *attr, cha
     return sprintf(buf, "%d\n", current->pid);
 }
 
-struct kobj_attribute roots_attribute = __ATTR(find_roots, 0660, find_roots, NULL);
+struct kobj_attribute roots_attribute = __ATTR(find_roots, 0660, on_file_read, NULL);
 
 static int __init sysfs_module_init(void) {
     int error = 0;
