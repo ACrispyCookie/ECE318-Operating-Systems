@@ -7,4 +7,4 @@ default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
 clean:
-	rm -f *.o *.ko *.mod.c
+	rm -f *.a *.o *.cmd *.symvers *.order *.ko *.mod *.mod.c
