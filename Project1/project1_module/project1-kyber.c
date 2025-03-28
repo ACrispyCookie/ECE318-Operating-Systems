@@ -13,11 +13,11 @@
  
  #include <trace/events/block.h>
  
- #include "elevator.h"
- #include "blk.h"
- #include "blk-mq.h"
- #include "blk-mq-debugfs.h"
- #include "blk-mq-sched.h"
+ #include "/usr/src/linux-source-6.8.0-dev/block/elevator.h"
+ #include "/usr/src/linux-source-6.8.0-dev/block/blk.h"
+ #include "/usr/src/linux-source-6.8.0-dev/block/blk-mq.h"
+ #include "/usr/src/linux-source-6.8.0-dev/block/blk-mq-debugfs.h"
+ #include "/usr/src/linux-source-6.8.0-dev/block/blk-mq-sched.h"
  
  #define CREATE_TRACE_POINTS
  #include <trace/events/kyber.h>
@@ -808,6 +808,7 @@
 	 int i;
  
 	 spin_lock(&khd->lock);
+	 printk("In team367237713796_kyber_dispatch_request function\n");
  
 	 /*
 	  * First, if we are still entitled to batch, try to dispatch a request
@@ -1033,7 +1034,7 @@
 	 .hctx_debugfs_attrs = kyber_hctx_debugfs_attrs,
  #endif
 	 .elevator_attrs = kyber_sched_attrs,
-	 .elevator_name = "kyber",
+	 .elevator_name = "team367237713796",
 	 .elevator_owner = THIS_MODULE,
  };
  
@@ -1050,7 +1051,6 @@
  module_init(kyber_init);
  module_exit(kyber_exit);
  
- MODULE_AUTHOR("Omar Sandoval");
+ MODULE_AUTHOR("Panagiotis Nikolaos Tsogkas, Jason Nikas, Dimitris Tsiantos");
  MODULE_LICENSE("GPL");
- MODULE_DESCRIPTION("Kyber I/O scheduler");
- 
+ MODULE_DESCRIPTION("Team367237713796 I/O scheduler");
