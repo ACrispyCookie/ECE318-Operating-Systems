@@ -18,7 +18,7 @@
  #include "/usr/src/linux-source-6.8.0-dev/block/blk-mq.h"
  #include "/usr/src/linux-source-6.8.0-dev/block/blk-mq-debugfs.h"
  #include "/usr/src/linux-source-6.8.0-dev/block/blk-mq-sched.h"
- 
+
  #define CREATE_TRACE_POINTS
  #include <trace/events/kyber.h>
  
@@ -1034,7 +1034,7 @@
 	 .hctx_debugfs_attrs = kyber_hctx_debugfs_attrs,
  #endif
 	 .elevator_attrs = kyber_sched_attrs,
-	 .elevator_name = "team367237713796",
+	 .elevator_name = "team367237713796_kyber",
 	 .elevator_owner = THIS_MODULE,
  };
  
