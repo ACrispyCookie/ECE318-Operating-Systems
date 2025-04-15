@@ -115,6 +115,9 @@ void schedule()
 void sched_fork(struct task_struct *p)
 {
 	p->time_slice = 100;
+	p->expected_burst = 0;
+    p->actual_burst = 0;
+    p->rq_last_in = 0;
 }
 
 /* scheduler_tick

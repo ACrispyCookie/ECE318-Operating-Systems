@@ -557,9 +557,9 @@ static void killtask(struct task_struct **p)
 		j->thread_info->parent->children--;
 	
 	/* Free data structures */
-	free(j->thread_info->processName);
-	free(j->thread_info);
-	free(j);
+	// free(j->thread_info->processName);
+	// free(j->thread_info);
+	// free(j);
 	
 	/* Set the idle task in place
 	 * of the current one so the
@@ -580,9 +580,9 @@ static void killtask(struct task_struct **p)
 static void shutdowncpu()
 {
   
-	free(idle->thread_info->processName);
-	free(idle->thread_info);
-	free(idle);
+	// free(idle->thread_info->processName);
+	// free(idle->thread_info);
+	// free(idle);
 	
 	/* Shuts down the scheduler */
 	killschedule();
@@ -598,11 +598,11 @@ static void shutdowncpu()
 static void badshutdowncpu()
 {
 	cleanuptask(init->thread_info);
-	
-	if(init->thread_info->processName != NULL)
-		free(init->thread_info->processName);
-	free(init->thread_info);
-	free(init);
+
+	// if(init->thread_info->processName != NULL)
+		// free(init->thread_info->processName);
+	// free(init->thread_info);
+	// free(init);
 }
 
 /* cleanuptask

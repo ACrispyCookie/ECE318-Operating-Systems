@@ -29,6 +29,9 @@ struct task_struct
 										   NULL when the process is not in the
 										   runqueue */
 /* ---------------- Do NOT Touch END-------------- */
+	unsigned long long expected_burst;
+	unsigned long long actual_burst;
+	unsigned long long rq_last_in;
 };
 
 /* runqueue */
