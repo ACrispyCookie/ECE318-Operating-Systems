@@ -18,6 +18,7 @@
  */
 struct runqueue *rq;
 struct task_struct *current;
+unsigned long long curr_task_start_moment;
 
 /* External Globals
  * jiffies - A discrete unit of time used for scheduling.
@@ -93,7 +94,9 @@ void schedule()
 	current->need_reschedule = 0; /* Always make sure to reset that, in case *
 								   * we entered the scheduler because current*
 								   * had requested so by setting this flag   */
-	
+
+    curr->actual_burst += sched_clock() - curr_task_start_moment; // TODO
+
 	if (rq->nr_running == 1) {
 		context_switch(rq->head);
 		nxt = rq->head->next;
@@ -106,6 +109,8 @@ void schedule()
 								/* processes available					   */
 		context_switch(curr);
 	}
+
+    curr_task_start_moment = sched_clock(); // TODO
 }
 
 
