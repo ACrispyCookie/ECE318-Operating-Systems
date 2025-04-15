@@ -18,7 +18,8 @@
  */
 struct runqueue *rq;
 struct task_struct *current;
-unsigned long long curr_task_start_moment;
+unsigned long long curr_task_start_time;
+short int curr_deactivated;
 
 /* External Globals
  * jiffies - A discrete unit of time used for scheduling.
@@ -85,34 +86,63 @@ void print_rq () {
  */
 void schedule()
 {
-	static struct task_struct *nxt = NULL;
-	struct task_struct *curr;
-	
-//	printf("In schedule\n");
-//	print_rq();
-	
+    unsigned long long min_expected_burst, max_rq_time_spent, min_rq_last_in;
+    unsigned long long time_now;
+    int min_goodness, curr_goodness;
+
+    // alternative name: next_task_that_was_selected_by_the_supremely_mighty_and_occasionally_moody_scheduler_engine_in_charge_of_balancing_the_fate_of_all_tasks_in_the_known_multithreaded_universe
+    struct task_struct *best_task = NULL;
+
+	printf("In schedule\n");
+	print_rq();
+
 	current->need_reschedule = 0; /* Always make sure to reset that, in case *
 								   * we entered the scheduler because current*
 								   * had requested so by setting this flag   */
 
-    current->actual_burst += sched_clock() - curr_task_start_moment; // TODO
-	//TODO find minimum Exp_Burst and maximum WaitingInRQ before finding new Current
-	//TODO find Goodness score
+    // Current process lost CPU, set last in rq time and actual burst
+    current->rq_last_in = sched_clock();
+    if (!curr_deactivated) {
+		current->actual_burst += sched_clock() - curr_task_start_time;
+    } else {
+        curr_deactivated = 0;
+    }
 
-	if (rq->nr_running == 1) {
-		context_switch(rq->head);
-		nxt = rq->head->next;
-	}
-	else {	
-		curr = nxt;
-		nxt = nxt->next;
-		if (nxt == rq->head)    /* Do this to always skip init at the head */
-			nxt = nxt->next;	/* of the queue, whenever there are other  */
-								/* processes available					   */
-		context_switch(curr);
-	}
+    min_expected_burst = rq->head->next->expected_burst;
+    min_rq_last_in = rq->head->next->rq_last_in;
+    time_now = sched_clock();
 
-    curr_task_start_moment = sched_clock(); // TODO
+    // Calculate minimum expected burst and maximum wait time in rq (oldest task)
+    for (struct task_struct *curr = rq->head->next->next; curr != rq->head; curr = curr->next) {
+		if (curr->expected_burst < min_expected_burst) {
+			min_expected_burst = curr->expected_burst;
+        }
+
+        if (curr->rq_last_in < min_rq_last_in) {
+			min_rq_last_in = curr->rq_last_in;
+        }
+    }
+
+    // Calculate goodness of each process in run queue
+	max_rq_time_spent = time_now - min_rq_last_in;
+    min_goodness = (1 + rq->head->next->expected_burst) / (1 + min_expected_burst)
+                    * (1 + max_rq_time_spent) / (1 + time_now - rq->head->next->rq_last_in);
+	best_task = rq->head->next;
+
+	for (struct task_struct *curr = rq->head->next->next; curr != rq->head; curr = curr->next) {
+		curr_goodness = (1 + curr->expected_burst) / (1 + min_expected_burst)
+                        * (1 + max_rq_time_spent) / (1 + time_now - curr->rq_last_in);
+    	if (curr_goodness < min_goodness) {
+			min_goodness = curr_goodness;
+            best_task = curr;
+    	}
+    }
+
+    // Determine if context switching is needed
+    if (best_task != current) {
+		context_switch(best_task);
+        curr_task_start_time = sched_clock();
+	}
 }
 
 
@@ -133,7 +163,12 @@ void sched_fork(struct task_struct *p)
  */
 void scheduler_tick(struct task_struct *p)
 {
-	schedule();
+  	current->time_slice -= 1;
+
+    if (current->time_slice <= 0) {
+    	current->time_slice = 10;
+		schedule();
+    }
 }
 
 /* wake_up_new_task
@@ -147,7 +182,8 @@ void wake_up_new_task(struct task_struct *p)
 	p->prev = rq->head;
 	p->next->prev = p;
 	p->prev->next = p;
-	
+	p->rq_last_in = sched_clock();
+
 	rq->nr_running++;
 }
 
@@ -161,7 +197,8 @@ void activate_task(struct task_struct *p)
 	p->prev = rq->head;
 	p->next->prev = p;
 	p->prev->next = p;
-	
+    p->rq_last_in = sched_clock();
+
 	rq->nr_running++;
 }
 
@@ -178,6 +215,10 @@ void deactivate_task(struct task_struct *p)
 
 	rq->nr_running--;
 
-    current->actual_burst = sched_clock() - curr_task_start_moment;
-	// TODO Calculate new expected burst value
+    current->actual_burst += sched_clock() - curr_task_start_time;
+	current->expected_burst = (current->actual_burst + ALPHA * current->expected_burst)
+                              / (1 + ALPHA);
+    current->actual_burst = 0;
+    curr_deactivated = 1;
+    printf("Expected burst: %llu", current->expected_burst);
 }

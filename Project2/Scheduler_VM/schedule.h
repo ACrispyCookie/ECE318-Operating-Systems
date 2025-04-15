@@ -4,6 +4,8 @@
 #include "macros.h"
 #include "list.h"
 
+#define ALPHA 0.5
+
 struct thread_info;
 
 /* ---------------- Do NOT Touch -------------- */

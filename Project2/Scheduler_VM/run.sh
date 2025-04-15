@@ -40,22 +40,29 @@ fi
 OUTPUT_DIR="outputs"
 mkdir -p $OUTPUT_DIR
 
-# Run the executable with the input file and redirect output
-EXECUTABLE="./sjf_sched"
-OUTPUT_FILE="$OUTPUT_DIR/$(basename "${INPUT_FILE%.conf}").out"
+# Prompt the user to choose between normal execution or debugging
+read -p "Do you want to debug the program using gdb? (y/n): " DEBUG_CHOICE
+if [[ "$DEBUG_CHOICE" =~ ^[Yy]$ ]]; then
+    # Run the executable in gdb
+    gdb --args ./sjf_sched "$INPUT_FILE"
+else
+    # Run the executable with the input file and redirect output
+    EXECUTABLE="./sjf_sched"
+    OUTPUT_FILE="$OUTPUT_DIR/$(basename "${INPUT_FILE%.conf}").out"
 
-$EXECUTABLE $INPUT_FILE > $OUTPUT_FILE
-if [ $? -ne 0 ]; then
-    echo "Execution of $EXECUTABLE failed."
-    exit 1
+    $EXECUTABLE $INPUT_FILE > $OUTPUT_FILE
+    if [ $? -ne 0 ]; then
+        echo "Execution of $EXECUTABLE failed."
+        exit 1
+    fi
+
+    # Run the plot.py script with the generated .out file
+    PLOT_SCRIPT="plot.py"
+    python3 $PLOT_SCRIPT $OUTPUT_FILE
+    if [ $? -ne 0 ]; then
+        echo "Execution of $PLOT_SCRIPT failed."
+        exit 1
+    fi
+
+    echo "Process completed successfully. Output saved to $OUTPUT_FILE."
 fi
-
-# Run the plot.py script with the generated .out file
-PLOT_SCRIPT="plot.py"
-python3 $PLOT_SCRIPT $OUTPUT_FILE
-if [ $? -ne 0 ]; then
-    echo "Execution of $PLOT_SCRIPT failed."
-    exit 1
-fi
-
-echo "Process completed successfully. Output saved to $OUTPUT_FILE."
