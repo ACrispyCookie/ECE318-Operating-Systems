@@ -95,7 +95,9 @@ void schedule()
 								   * we entered the scheduler because current*
 								   * had requested so by setting this flag   */
 
-    curr->actual_burst += sched_clock() - curr_task_start_moment; // TODO
+    current->actual_burst += sched_clock() - curr_task_start_moment; // TODO
+	//TODO find minimum Exp_Burst and maximum WaitingInRQ before finding new Current
+	//TODO find Goodness score
 
 	if (rq->nr_running == 1) {
 		context_switch(rq->head);
@@ -175,4 +177,7 @@ void deactivate_task(struct task_struct *p)
 							   * next is checked in cpu.c      */
 
 	rq->nr_running--;
+
+    current->actual_burst = sched_clock() - curr_task_start_moment;
+	// TODO Calculate new expected burst value
 }
