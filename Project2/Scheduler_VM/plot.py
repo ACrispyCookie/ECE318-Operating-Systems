@@ -1,7 +1,10 @@
 import re
 import sys
+import matplotlib
 import matplotlib.pyplot as plt
 from collections import defaultdict
+
+matplotlib.use('TkAgg')
 
 # Parse the "out" file
 def parse_out_file(file_path):
@@ -12,7 +15,7 @@ def parse_out_file(file_path):
     with open(file_path, 'r') as file:
         for line in file:
             # Match lines with process execution info
-            match = re.search(r'\(([^)]+)\)/(\d+)/(\d+)ms - Switching Process In', line)
+            match = re.search(r'\(([^)]+)\)/(-?\d+)/(\d+)ms - Switching Process In', line)
             if match:
                 process_info, _, timestamp = match.groups()
                 process_name = process_info.split(':')[0]  # Extract process name
@@ -46,10 +49,51 @@ def plot_gantt(process_intervals, image_path='plot.png'):
     ax.set_yticks(yticks)
     ax.set_yticklabels(ylabels)
     ax.set_xlabel('Time (ms)')
-    ax.set_title('Gantt Graph of Process Execution')
+    ax.set_title('Gantt Chart of Process Execution')
     plt.grid(axis='x', linestyle='--', alpha=0.7)
     plt.tight_layout()
-    plt.savefig(image_path, dpi=300)
+    plt.savefig(image_path, dpi=800)
+    # plt.show()
+
+def parse_goodness_scores(file_path):
+    goodness_data = defaultdict(list)  # Store goodness scores for each process
+    timestamps = []  # Store timestamps for plotting
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            # Match lines with goodness scores
+            match = re.search(r'(\d+)ms - Goodness scores: (.+)', line)
+            if match:
+                timestamp, scores = match.groups()
+                timestamp = int(timestamp)
+                timestamps.append(timestamp)
+
+                # Extract process name and goodness score pairs
+                for process_match in re.finditer(r'\(\(([^)]+)\), ([\d.]+)\)', scores):
+                    process_name, goodness = process_match.groups()
+                    goodness = float(goodness)
+                    goodness_data[process_name].append((timestamp, goodness))
+
+    return goodness_data, timestamps
+
+
+def plot_goodness_chart(goodness_data, timestamps, image_path='goodness_plot.png'):
+    plt.figure(figsize=(12, 6))
+
+    # Plot goodness scores for each process
+    for process_id, data in goodness_data.items():
+        times, scores = zip(*data)  # Separate timestamps and goodness scores
+        plt.plot(times, scores, label=f'Process {process_id}')
+
+    plt.xlabel('Time (ms)')
+    plt.ylabel('Goodness Score')
+    plt.yscale('log')
+    plt.title('Goodness Scores Over Time')
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.savefig(image_path, dpi=800)
+    print(f"Goodness plot saved to {image_path}")
 
 # Main function
 if __name__ == "__main__":
@@ -59,3 +103,11 @@ if __name__ == "__main__":
     filename = file_path.split('/')[-1]
     image_path = 'plots/' + filename.replace('.out', '') + '.png'
     plot_gantt(process_intervals, image_path)
+
+    # Parse goodness scores
+    goodness_data, timestamps = parse_goodness_scores(file_path)
+
+    # Generate the plot
+    filename = file_path.split('/')[-1]
+    image_path = 'plots/' + filename.replace('.out', '_goodness.png')
+    plot_goodness_chart(goodness_data, timestamps, image_path)

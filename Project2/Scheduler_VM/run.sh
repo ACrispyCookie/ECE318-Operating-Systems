@@ -41,7 +41,7 @@ OUTPUT_DIR="outputs"
 mkdir -p $OUTPUT_DIR
 
 # Prompt the user to choose between normal execution or debugging
-read -p "Do you want to debug the program using gdb? (y/n): " DEBUG_CHOICE
+read -p "Do you want to debug the program using gdb? (y/n) [default: n]: " DEBUG_CHOICE
 if [[ "$DEBUG_CHOICE" =~ ^[Yy]$ ]]; then
     # Run the executable in gdb
     gdb --args ./sjf_sched "$INPUT_FILE"
