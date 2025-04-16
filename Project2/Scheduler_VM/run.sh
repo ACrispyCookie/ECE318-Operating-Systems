@@ -30,7 +30,7 @@ fi
 INPUT_FILE="${CONF_FILES[$((SELECTION - 1))]}"
 
 # Run the make command
-make
+make -C src
 if [ $? -ne 0 ]; then
     echo "Make command failed."
     exit 1
@@ -44,10 +44,10 @@ mkdir -p $OUTPUT_DIR
 read -p "Do you want to debug the program using gdb? (y/n) [default: n]: " DEBUG_CHOICE
 if [[ "$DEBUG_CHOICE" =~ ^[Yy]$ ]]; then
     # Run the executable in gdb
-    gdb --args ./sjf_sched "$INPUT_FILE"
+    gdb --args ./src/sjf_sched "$INPUT_FILE"
 else
     # Run the executable with the input file and redirect output
-    EXECUTABLE="./sjf_sched"
+    EXECUTABLE="./src/sjf_sched"
     OUTPUT_FILE="$OUTPUT_DIR/$(basename "${INPUT_FILE%.conf}").out"
 
     $EXECUTABLE $INPUT_FILE > $OUTPUT_FILE
