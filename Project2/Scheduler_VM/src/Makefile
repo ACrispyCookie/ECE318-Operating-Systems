@@ -10,7 +10,10 @@
 CC = gcc
 
 # Put any flags for the C compiler here
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g $(GOODNESS_FLAG)
+
+# Default goodness flag
+GOODNESS_FLAG = -DENABLE_GOODNESS_ALGORITHM=1
 
 # The source files for the Virtual Machine
 LIB_SRCS = cpuinit.c cpu.c
@@ -46,8 +49,10 @@ $(LIB_NAME): $(LIB_SRCS) $(INC_FILES)
 	$(CC) -c $(CFLAGS) $(LIB_SRCS)
 	ar rcsv lib$(LIB_NAME).a $(LIB_OBJS)
 
+no-goodness:
+	$(MAKE) GOODNESS_FLAG=-DENABLE_GOODNESS_ALGORITHM=0
 
-.PHONY: clean
+.PHONY: clean no-goodness
 
 clean:
 	rm -v $(EXEC_NAME) lib$(LIB_NAME).a *.o

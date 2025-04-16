@@ -29,8 +29,16 @@ fi
 # Get the selected file
 INPUT_FILE="${CONF_FILES[$((SELECTION - 1))]}"
 
-# Run the make command
-make -C src
+# Prompt the user to enable or disable the goodness algorithm
+read -p "Do you want to enable the goodness algorithm? (y/n) [default: y]: " GOODNESS_CHOICE
+if [[ "$GOODNESS_CHOICE" =~ ^[Nn]$ ]]; then
+    MAKE_TARGET="no-goodness"
+else
+    MAKE_TARGET="all"
+fi
+
+# Run the make command with the selected target
+make -C src $MAKE_TARGET
 if [ $? -ne 0 ]; then
     echo "Make command failed."
     exit 1

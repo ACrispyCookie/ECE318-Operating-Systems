@@ -83,7 +83,7 @@ def plot_goodness_chart(goodness_data, timestamps, image_path='goodness_plot.png
     # Plot goodness scores for each process
     for process_id, data in goodness_data.items():
         times, scores = zip(*data)  # Separate timestamps and goodness scores
-        plt.plot(times, scores, label=f'Process {process_id}')
+        plt.plot(times, scores, marker='o', linestyle='None', label=f'Process {process_id}')
 
     plt.xlabel('Time (ms)')
     plt.ylabel('Goodness Score')
