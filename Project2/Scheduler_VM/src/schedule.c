@@ -12,7 +12,10 @@
 #include "privatestructs.h"
 
 #define NEWTASKSLICE (NS_TO_JIFFIES(100000000))
-#define CALCULATE_EXPECTED_BURST () ()
+#define CALCULATE_EXPECTED_BURST(prev_actual_burst, prev_expected_burst) \
+		(((prev_actual_burst) + (ALPHA) * (prev_expected_burst)) / (1 + (ALPHA)))
+
+#define CALCULATE_GOODNESS() ()
 
 /* Local Globals
  * rq - This is a pointer to the runqueue that the scheduler uses.
@@ -106,24 +109,25 @@ void schedule()
     current->rq_last_in = time_now;
     if (!curr_deactivated) {
 		current->actual_burst += time_now - curr_task_start_time;
-	    current->expected_burst = (current->actual_burst + ALPHA * current->expected_burst)
-								  / (1 + ALPHA);
+	    current->expected_burst = CALCULATE_EXPECTED_BURST(current->actual_burst, current->expected_burst);
     } else {
         curr_deactivated = 0;
     }
 
     #if defined(ENABLE_GOODNESS_ALGORITHM) && ENABLE_GOODNESS_ALGORITHM == 1
+		// Select the task with the min goodness score (SJF with starvation avoidance)
 		unsigned long long max_rq_time_spent, min_rq_last_in;
 		double min_goodness, curr_goodness;
 
 	    min_expected_burst = rq->head->next->expected_burst;
 	    min_rq_last_in = rq->head->next->rq_last_in;
 
-	    // Calculate minimum expected burst and maximum wait time in rq (oldest task)
-		printf("%lldms - expectedBursts: ", time_now / 1000000);
-		printf("%lld, ", rq->head->next->expected_burst);
+	    // Find the minimum expected burst and maximum wait time in rq (oldest task)
+		printf("%lldms - Expected bursts: ", time_now / 1000000);
+		printf("(%s, %lld)", rq->head->next->thread_info->processName, rq->head->next->expected_burst);
+
 	    for (struct task_struct *curr = rq->head->next->next; curr != rq->head; curr = curr->next) {
-      		printf("%lld, ", curr->expected_burst);
+      		printf(", (%s, %lld)", rq->head->next->thread_info->processName, curr->expected_burst);
 
 			if (curr->expected_burst < min_expected_burst) {
 				min_expected_burst = curr->expected_burst;
@@ -154,9 +158,9 @@ void schedule()
     		}
 	    }
 	    printf("\n");
-		printf("%lldms - MinExpectedBurst, MaxRqTimeSpent: %llu %llu\n", time_now / 1000000, min_expected_burst, max_rq_time_spent);
+
     #else
-		// Select the task with the minimum expected burst as the best
+		// Select the task with the minimum expected burst as the best (Shortest Job First)
 		min_expected_burst = rq->head->next->expected_burst;
 		best_task = rq->head->next;
 
@@ -168,7 +172,7 @@ void schedule()
 		}
     #endif
 
-    // Determine if context switching is needed
+    // Context switch if needed
     if (best_task != current) {
 		context_switch(best_task);
         curr_task_start_time = sched_clock();
@@ -246,11 +250,7 @@ void deactivate_task(struct task_struct *p)
 	rq->nr_running--;
 
     current->actual_burst += sched_clock() - curr_task_start_time;
-	current->expected_burst = (current->actual_burst + ALPHA * current->expected_burst)
-                              / (1 + ALPHA);
-    printf("Current task start time: %lld\n", curr_task_start_time);
-	printf("Actual burst: %llu\n", current->actual_burst);
+	current->expected_burst = CALCULATE_EXPECTED_BURST(current->actual_burst, current->expected_burst);
     current->actual_burst = 0;
     curr_deactivated = 1;
-    printf("Expected burst: %llu\n", current->expected_burst);
 }

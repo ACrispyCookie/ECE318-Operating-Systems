@@ -30,6 +30,7 @@ fi
 INPUT_FILE="${CONF_FILES[$((SELECTION - 1))]}"
 
 # Prompt the user to enable or disable the goodness algorithm
+echo ""
 read -p "Do you want to enable the goodness algorithm? (y/n) [default: y]: " GOODNESS_CHOICE
 if [[ "$GOODNESS_CHOICE" =~ ^[Nn]$ ]]; then
     MAKE_TARGET="no-goodness"
@@ -49,6 +50,7 @@ OUTPUT_DIR="outputs"
 mkdir -p $OUTPUT_DIR
 
 # Prompt the user to choose between normal execution or debugging
+echo ""
 read -p "Do you want to debug the program using gdb? (y/n) [default: n]: " DEBUG_CHOICE
 if [[ "$DEBUG_CHOICE" =~ ^[Yy]$ ]]; then
     # Run the executable in gdb
