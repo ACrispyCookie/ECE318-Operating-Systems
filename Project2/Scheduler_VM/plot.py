@@ -1,186 +1,162 @@
 import os
 import re
-import sys
 import argparse
+from collections import defaultdict
+
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from collections import defaultdict
 
 
 def parse_intervals(file_path):
-    process_intervals = defaultdict(list)  # Store intervals for each process
-    sleep_times = defaultdict(list)  # Store sleep times for each process
-    active_process = None  # Track the currently active process
-    start_time = None  # Track the start time of the active process
+    """Parse process execution intervals and sleep times from the file."""
+    process_intervals = defaultdict(list)
+    sleep_times = defaultdict(list)
+    active_process = None
+    start_time = None
 
     with open(file_path, 'r') as file:
         for line in file:
-            # Match lines with process execution info
-            match = re.search(r'\(([^)]+)\)/(-?\d+)/(\d+)ms - Switching Process In', line)
-            if match:
-                process_info, _, timestamp = match.groups()
+            in_match = re.search(r'\(([^)]+)\)/-?\d+/(\d+)ms - Switching Process In', line)
+            sleep_match = re.search(r'\(([^)]+)\)/-?\d+/(\d+)ms - Going to Sleep', line)
+
+            if in_match:
+                process_info, timestamp = in_match.groups()
                 timestamp = int(timestamp)
 
-                # If a process is already active, close its interval
                 if active_process is not None and start_time is not None:
                     process_intervals[active_process].append((start_time, timestamp))
 
-                # Update the active process and start time
                 active_process = process_info
                 start_time = timestamp
 
-            # Match lines where a process goes to sleep
-            sleep_match = re.search(r'\(([^)]+)\)/(-?\d+)/(\d+)ms - Going to Sleep', line)
-            if sleep_match:
-                process_info, _, timestamp = sleep_match.groups()
-                timestamp = int(timestamp)
-                sleep_times[process_info].append(timestamp)
+            elif sleep_match:
+                process_info, timestamp = sleep_match.groups()
+                sleep_times[process_info].append(int(timestamp))
 
-        # Close the last active process interval if any
         if active_process is not None and start_time is not None:
             process_intervals[active_process].append((start_time, timestamp))
 
     return process_intervals, sleep_times
 
 
-def plot_gantt(process_intervals, sleep_times, image_path='plot.png'):
+def parse_goodness_scores(file_path):
+    """Parse goodness scores for each process."""
+    goodness_data = defaultdict(list)
+    timestamps = []
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            match = re.search(r'(\d+)ms - Goodness scores: (.+)', line)
+            if not match:
+                continue
+
+            timestamp, scores = match.groups()
+            timestamp = int(timestamp)
+            timestamps.append(timestamp)
+
+            for proc in re.finditer(r'\(\(([^)]+)\), ([\d.]+)\)', scores):
+                process_name, goodness = proc.groups()
+                goodness_data[process_name].append((timestamp, float(goodness)))
+
+    return goodness_data, timestamps
+
+
+def parse_expected_bursts(file_path):
+    """Parse expected CPU burst lengths for each process."""
+    expected_burst_data = defaultdict(list)
+    timestamps = []
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            match = re.search(r'(\d+)ms - Expected bursts: (.+)', line)
+            if not match:
+                continue
+
+            timestamp, bursts = match.groups()
+            timestamp = int(timestamp)
+            timestamps.append(timestamp)
+
+            for proc in re.finditer(r'\(\(([^:]+):(\d+)\), (\d+)\)', bursts):
+                name, pid, burst = proc.groups()
+                expected_burst_data[(name, int(pid))].append((timestamp, int(burst)))
+
+    return expected_burst_data, timestamps
+
+
+def plot_gantt(process_intervals, sleep_times, image_path):
+    """Plot a Gantt chart of process execution and sleep times."""
     fig, ax = plt.subplots(figsize=(10, 6))
-    yticks = []
-    ylabels = []
+    yticks, ylabels = [], []
+
     for i, (process, intervals) in enumerate(process_intervals.items()):
         yticks.append(i)
         ylabels.append(process)
-        for start_time, end_time in intervals:  # Unpack the start and end times
-            ax.broken_barh([(start_time, end_time - start_time)], (i - 0.4, 0.8), facecolors='tab:blue')
 
-        # Plot sleep times as red triangles
-        if process in sleep_times:
-            for sleep_time in sleep_times[process]:
-                ax.plot(sleep_time, i, 'r^', label='Sleep' if i == 0 else "")
+        for start, end in intervals:
+            ax.broken_barh([(start, end - start)], (i - 0.4, 0.8), facecolors='tab:blue')
+
+        for sleep_time in sleep_times.get(process, []):
+            ax.plot(sleep_time, i, 'r^', label='Sleep' if i == 0 else "")
 
     ax.set_yticks(yticks)
     ax.set_yticklabels(ylabels)
     ax.set_xlabel('Time (ms)')
     ax.set_title('Process Execution Timeline')
-    ax.legend(handles=[Line2D([], [], color='red', marker='^', linestyle='None', label='Process went to sleep')], loc='upper right')
+    ax.legend(handles=[Line2D([], [], color='red', marker='^', linestyle='None', label='Sleep')], loc='upper right')
     plt.grid(axis='x', linestyle='--', alpha=0.7)
     plt.tight_layout()
     plt.savefig(image_path, dpi=800)
-    print(f"\nGantt plot saved to {image_path}")
+    print(f"Gantt plot saved to {image_path}")
 
 
-def parse_goodness_scores(file_path):
-    goodness_data = defaultdict(list)  # Store goodness scores for each process
-    timestamps = []  # Store timestamps for plotting
-
-    with open(file_path, 'r') as file:
-        for line in file:
-            # Match lines with goodness scores
-            match = re.search(r'(\d+)ms - Goodness scores: (.+)', line)
-            if match:
-                timestamp, scores = match.groups()
-                timestamp = int(timestamp)
-                timestamps.append(timestamp)
-
-                # Extract process name and goodness score pairs
-                for process_match in re.finditer(r'\(\(([^)]+)\), ([\d.]+)\)', scores):
-                    process_name, goodness = process_match.groups()
-                    goodness = float(goodness)
-                    goodness_data[process_name].append((timestamp, goodness))
-
-    return goodness_data, timestamps
-
-
-def plot_goodness_chart(goodness_data, timestamps, image_path='goodness_plot.png'):
+def plot_scatter(data, ylabel, title, image_path):
+    """Generic scatter plot for time series data per process."""
     plt.figure(figsize=(12, 6))
 
-    # Plot goodness scores for each process
-    for process_id, data in goodness_data.items():
-        times, scores = zip(*data)  # Separate timestamps and goodness scores
-        plt.plot(times, scores, marker='o', linestyle='None', label=f'{process_id}')
+    for process, entries in data.items():
+        times, values = zip(*entries)
+        label = f"{process[0]}:{process[1]}" if isinstance(process, tuple) else process
+        plt.plot(times, values, marker='o', linestyle='None', label=label)
 
     plt.xlabel('Time (ms)')
-    plt.ylabel('Goodness Score')
-    plt.yscale('log')
-    plt.title('Goodness Scores per Process over Time')
-    plt.legend()
+    plt.ylabel(ylabel)
+    plt.title(title)
     plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
     plt.tight_layout()
     plt.savefig(image_path, dpi=800)
-    print(f"\nGoodness plot saved to {image_path}")
+    print(f"{title} saved to {image_path}")
 
 
-def parse_expected_bursts(file_path):
-    expected_burst_data = defaultdict(list)  # Store expected bursts for each process
-    timestamps = []  # Store timestamps for plotting
+def main():
+    matplotlib.use('TkAgg')
 
-    with open(file_path, 'r') as file:
-        for line in file:
-            # Match lines with expected burst data
-            match = re.search(r'(\d+)ms - Expected bursts: (.+)', line)
-            if match:
-                timestamp, bursts = match.groups()
-                timestamp = int(timestamp)
-                timestamps.append(timestamp)
+    parser = argparse.ArgumentParser(description="Plot scheduler data from .out file")
+    parser.add_argument("file_path", help="Path to the .out file")
+    parser.add_argument("--no-goodness", action="store_true", help="Skip goodness score plot")
+    args = parser.parse_args()
 
-                # Extract process name, ID, and expected burst
-                for burst_match in re.finditer(r'\(\(([^:]+):(\d+)\), (\d+)\)', bursts):
-                    process_name, process_id, expected_burst = burst_match.groups()
-                    process_id = int(process_id)
-                    expected_burst = int(expected_burst)
-                    expected_burst_data[(process_name, process_id)].append((timestamp, expected_burst))
+    output_folder = 'plots/sjf/' if args.no_goodness else 'plots/sjf-mod/'
+    os.makedirs(output_folder, exist_ok=True)
+    filename = os.path.basename(args.file_path).replace('.out', '')
 
-    return expected_burst_data, timestamps
+    # Gantt Plot
+    intervals, sleeps = parse_intervals(args.file_path)
+    gantt_path = os.path.join(output_folder, f"{filename}-gantt.png")
+    plot_gantt(intervals, sleeps, gantt_path)
 
+    # Goodness Score Plot
+    if not args.no_goodness:
+        goodness_data, ts = parse_goodness_scores(args.file_path)
+        goodness_path = os.path.join(output_folder, f"{filename}-goodness.png")
+        plot_scatter(goodness_data, "Goodness Score", "Goodness Scores per Process over Time", goodness_path)
 
-def plot_expected_burst_chart(expected_burst_data, timestamps, image_path='expected_burst_plot.png'):
-    plt.figure(figsize=(12, 6))
-
-    # Plot expected bursts for each process
-    for (process_name, process_id), data in expected_burst_data.items():
-        times, bursts = zip(*data)  # Separate timestamps and expected bursts
-        plt.plot(times, bursts, marker='o', linestyle='None', label=f'{process_name}:{process_id}')
-
-    plt.xlabel('Time (ms)')
-    plt.ylabel('Expected Burst')
-    plt.title('Expected Bursts per Process over Time')
-    plt.legend()
-    plt.grid(True, linestyle='--', alpha=0.7)
-    plt.tight_layout()
-    plt.savefig(image_path, dpi=800)
-    print(f"\nExpected burst plot saved to {image_path}")
+    # Expected Burst Plot
+    burst_data, ts = parse_expected_bursts(args.file_path)
+    burst_path = os.path.join(output_folder, f"{filename}-expected_burst.png")
+    plot_scatter(burst_data, "Expected Burst", "Expected Bursts per Process over Time", burst_path)
 
 
 if __name__ == "__main__":
-    matplotlib.use('TkAgg')
-
-    # Set up argument parser
-    parser = argparse.ArgumentParser(description="Plot scheduler data.")
-    parser.add_argument("file_path", help="Path to the input .out file")
-    parser.add_argument("--no-goodness", action="store_true", help="Skip plotting goodness scores")
-    args = parser.parse_args()
-
-    # Set the output folder based on the presence of --no-goodness
-    output_folder = 'plots/sjf/' if args.no_goodness else 'plots/sjf-mod/'
-
-    # Ensure the output folder exists
-    os.makedirs(output_folder, exist_ok=True)
-
-    filename = os.path.basename(args.file_path)
-
-    # Parse intervals
-    process_intervals, sleep_times = parse_intervals(args.file_path)
-    image_path = os.path.join(output_folder, filename.replace('.out', '') + '-gantt.png')
-    plot_gantt(process_intervals, sleep_times, image_path)
-
-    # Parse goodness scores if --no-goodness is not passed
-    if not args.no_goodness:
-        goodness_data, timestamps = parse_goodness_scores(args.file_path)
-        image_path = os.path.join(output_folder, filename.replace('.out', '') + '-goodness.png')
-        plot_goodness_chart(goodness_data, timestamps, image_path)
-
-    # Parse expected bursts
-    image_path = os.path.join(output_folder, filename.replace('.out', '') + '-expected_burst.png')
-    expected_burst_data, timestamps = parse_expected_bursts(args.file_path)
-    plot_expected_burst_chart(expected_burst_data, timestamps, image_path)
+    main()
