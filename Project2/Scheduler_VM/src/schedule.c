@@ -127,7 +127,7 @@ void schedule()
 		printf("(%s, %lld)", rq->head->next->thread_info->processName, rq->head->next->expected_burst);
 
 	    for (struct task_struct *curr = rq->head->next->next; curr != rq->head; curr = curr->next) {
-      		printf(", (%s, %lld)", rq->head->next->thread_info->processName, curr->expected_burst);
+      		printf(", (%s, %lld)", curr->thread_info->processName, curr->expected_burst);
 
 			if (curr->expected_burst < min_expected_burst) {
 				min_expected_burst = curr->expected_burst;
@@ -164,7 +164,11 @@ void schedule()
 		min_expected_burst = rq->head->next->expected_burst;
 		best_task = rq->head->next;
 
+		printf("%lldms - Expected bursts: ", time_now / 1000000);
+		printf("(%s, %lld)", rq->head->next->thread_info->processName, rq->head->next->expected_burst);
+
 		for (struct task_struct *curr = rq->head->next->next; curr != rq->head; curr = curr->next) {
+			printf(", (%s, %lld)", curr->thread_info->processName, curr->expected_burst);
 			if (curr->expected_burst < min_expected_burst) {
 				min_expected_burst = curr->expected_burst;
 				best_task = curr;

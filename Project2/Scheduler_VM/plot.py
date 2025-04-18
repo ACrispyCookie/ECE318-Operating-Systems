@@ -1,9 +1,12 @@
+import os
 import re
 import sys
+import argparse
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from collections import defaultdict
+
 
 def parse_intervals(file_path):
     process_intervals = defaultdict(list)  # Store intervals for each process
@@ -64,7 +67,7 @@ def plot_gantt(process_intervals, sleep_times, image_path='plot.png'):
     plt.grid(axis='x', linestyle='--', alpha=0.7)
     plt.tight_layout()
     plt.savefig(image_path, dpi=800)
-    print(f"\nGantt plot saved to {image_path}\n")
+    print(f"\nGantt plot saved to {image_path}")
 
 
 def parse_goodness_scores(file_path):
@@ -105,7 +108,8 @@ def plot_goodness_chart(goodness_data, timestamps, image_path='goodness_plot.png
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
     plt.savefig(image_path, dpi=800)
-    print(f"\nGoodness plot saved to {image_path}\n")
+    print(f"\nGoodness plot saved to {image_path}")
+
 
 def parse_expected_bursts(file_path):
     expected_burst_data = defaultdict(list)  # Store expected bursts for each process
@@ -145,28 +149,38 @@ def plot_expected_burst_chart(expected_burst_data, timestamps, image_path='expec
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
     plt.savefig(image_path, dpi=800)
-    print(f"\nExpected burst plot saved to {image_path}\n")
+    print(f"\nExpected burst plot saved to {image_path}")
 
 
-# Main function
 if __name__ == "__main__":
     matplotlib.use('TkAgg')
 
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Plot scheduler data.")
+    parser.add_argument("file_path", help="Path to the input .out file")
+    parser.add_argument("--no-goodness", action="store_true", help="Skip plotting goodness scores")
+    args = parser.parse_args()
+
+    # Set the output folder based on the presence of --no-goodness
+    output_folder = 'plots/sjf/' if args.no_goodness else 'plots/sjf-mod/'
+
+    # Ensure the output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    filename = os.path.basename(args.file_path)
+
     # Parse intervals
-    file_path = sys.argv[1]
-    process_intervals, sleep_times = parse_intervals(file_path)  # Unpack both returned values
-    filename = file_path.split('/')[-1]
+    process_intervals, sleep_times = parse_intervals(args.file_path)
+    image_path = os.path.join(output_folder, filename.replace('.out', '') + '-gantt.png')
+    plot_gantt(process_intervals, sleep_times, image_path)
 
-    image_path = 'plots/' + filename.replace('.out', '') + '-gantt.png'
-    plot_gantt(process_intervals, sleep_times, image_path)  # Pass both variables to the function
-
-    # Parse goodness scores
-    goodness_data, timestamps = parse_goodness_scores(file_path)
-
-    image_path = 'plots/' + filename.replace('.out', '') + '-goodness.png'
-    plot_goodness_chart(goodness_data, timestamps, image_path)
+    # Parse goodness scores if --no-goodness is not passed
+    if not args.no_goodness:
+        goodness_data, timestamps = parse_goodness_scores(args.file_path)
+        image_path = os.path.join(output_folder, filename.replace('.out', '') + '-goodness.png')
+        plot_goodness_chart(goodness_data, timestamps, image_path)
 
     # Parse expected bursts
-    image_path = 'plots/' + filename.replace('.out', '') + '-expected_burst.png'
-    expected_burst_data, timestamps = parse_expected_bursts(file_path)
+    image_path = os.path.join(output_folder, filename.replace('.out', '') + '-expected_burst.png')
+    expected_burst_data, timestamps = parse_expected_bursts(args.file_path)
     plot_expected_burst_chart(expected_burst_data, timestamps, image_path)
