@@ -101,7 +101,10 @@ def plot_gantt(process_intervals, sleep_times, wake_up_times, creation_times, im
     fig, ax = plt.subplots(figsize=(10, 6))
     yticks, ylabels = [], []
 
-    for i, (process, intervals) in enumerate(process_intervals.items()):
+    # Sort processes by ID (extracted from the process name)
+    sorted_processes = sorted(process_intervals.items(), key=lambda x: int(x[0].split(':')[1]))
+
+    for i, (process, intervals) in enumerate(sorted_processes):
         yticks.append(i)
         ylabels.append(process)
 
