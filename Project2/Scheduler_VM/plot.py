@@ -9,9 +9,11 @@ from matplotlib.lines import Line2D
 
 
 def parse_intervals(file_path):
-    """Parse process execution intervals and sleep times from the file."""
+    """Parse process execution intervals, sleep times, wake-up times, and creation times from the file."""
     process_intervals = defaultdict(list)
     sleep_times = defaultdict(list)
+    wake_up_times = defaultdict(list)
+    creation_times = defaultdict(list)
     active_process = None
     start_time = None
 
@@ -19,6 +21,8 @@ def parse_intervals(file_path):
         for line in file:
             in_match = re.search(r'\(([^)]+)\)/-?\d+/(\d+)ms - Switching Process In', line)
             sleep_match = re.search(r'\(([^)]+)\)/-?\d+/(\d+)ms - Going to Sleep', line)
+            wake_up_match = re.search(r'\(([^)]+)\)/-?\d+/(\d+)ms - Waking Up from Sleep', line)
+            creation_match = re.search(r'(\d+)ms - Created task: \(([^)]+)\)', line)
 
             if in_match:
                 process_info, timestamp = in_match.groups()
@@ -34,10 +38,18 @@ def parse_intervals(file_path):
                 process_info, timestamp = sleep_match.groups()
                 sleep_times[process_info].append(int(timestamp))
 
+            elif wake_up_match:
+                process_info, timestamp = wake_up_match.groups()
+                wake_up_times[process_info].append(int(timestamp))
+
+            elif creation_match:
+                timestamp, process_info = creation_match.groups()
+                creation_times[process_info].append(int(timestamp))
+
         if active_process is not None and start_time is not None:
             process_intervals[active_process].append((start_time, timestamp))
 
-    return process_intervals, sleep_times
+    return process_intervals, sleep_times, wake_up_times, creation_times
 
 
 def parse_goodness_scores(file_path):
@@ -84,8 +96,8 @@ def parse_expected_bursts(file_path):
     return expected_burst_data, timestamps
 
 
-def plot_gantt(process_intervals, sleep_times, image_path):
-    """Plot a Gantt chart of process execution and sleep times."""
+def plot_gantt(process_intervals, sleep_times, wake_up_times, creation_times, image_path):
+    """Plot a Gantt chart of process execution, sleep times, wake-up times, and creation times."""
     fig, ax = plt.subplots(figsize=(10, 6))
     yticks, ylabels = [], []
 
@@ -93,17 +105,31 @@ def plot_gantt(process_intervals, sleep_times, image_path):
         yticks.append(i)
         ylabels.append(process)
 
+        # Plot execution intervals
         for start, end in intervals:
             ax.broken_barh([(start, end - start)], (i - 0.4, 0.8), facecolors='tab:blue')
 
+        # Plot sleep times
         for sleep_time in sleep_times.get(process, []):
             ax.plot(sleep_time, i, 'r^', label='Sleep' if i == 0 else "")
+
+        # Plot wake-up times
+        for wake_up_time in wake_up_times.get(process, []):
+            ax.plot(wake_up_time, i, 'y^', label='Wake Up' if i == 0 else "")
+
+        # Plot creation times
+        for creation_time in creation_times.get(process, []):
+            ax.plot(creation_time, i, 'g^', label='Created' if i == 0 else "")
 
     ax.set_yticks(yticks)
     ax.set_yticklabels(ylabels)
     ax.set_xlabel('Time (ms)')
     ax.set_title('Process Execution Timeline')
-    ax.legend(handles=[Line2D([], [], color='red', marker='^', linestyle='None', label='Sleep')], loc='upper right')
+    ax.legend(handles=[
+        Line2D([], [], color='green', marker='^', linestyle='None', label='Created'),
+        Line2D([], [], color='yellow', marker='^', linestyle='None', label='Wake Up'),
+        Line2D([], [], color='red', marker='^', linestyle='None', label='Sleep'),
+    ], loc='upper right')
     plt.grid(axis='x', linestyle='--', alpha=0.7)
     plt.tight_layout()
     plt.savefig(image_path, dpi=800)
@@ -142,9 +168,9 @@ def main():
     filename = os.path.basename(args.file_path).replace('.out', '')
 
     # Gantt Plot
-    intervals, sleeps = parse_intervals(args.file_path)
+    intervals, sleeps, wake_ups, creations = parse_intervals(args.file_path)
     gantt_path = os.path.join(output_folder, f"{filename}-gantt.png")
-    plot_gantt(intervals, sleeps, gantt_path)
+    plot_gantt(intervals, sleeps, wake_ups, creations, gantt_path)
 
     # Goodness Score Plot
     if not args.no_goodness:

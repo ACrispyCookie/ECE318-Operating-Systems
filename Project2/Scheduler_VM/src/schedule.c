@@ -223,6 +223,8 @@ void wake_up_new_task(struct task_struct *p)
 	p->rq_last_in = sched_clock();
 
 	rq->nr_running++;
+
+	printf("%lldms - Created task: %s\n", sched_clock() / 1000000, p->thread_info->processName);
 }
 
 /* activate_task
