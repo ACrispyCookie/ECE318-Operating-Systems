@@ -43,7 +43,7 @@ EXEC_NAME = sjf_sched
 all: $(EXEC_NAME)
 
 $(EXEC_NAME): $(SCHED_SRCS) $(INC_FILES) $(LIB_NAME)
-	$(CC) $(CFLAGS) $(SCHED_SRCS) $(ADD_SRCS) -o $(EXEC_NAME) -l$(LIB_NAME) -L$(LIB_DIR)
+	$(CC) $(CFLAGS) $(SCHED_SRCS) $(ADD_SRCS) -o $(EXEC_NAME) -lm -l$(LIB_NAME) -L$(LIB_DIR)
 
 $(LIB_NAME): $(LIB_SRCS) $(INC_FILES)
 	$(CC) -c $(CFLAGS) $(LIB_SRCS)

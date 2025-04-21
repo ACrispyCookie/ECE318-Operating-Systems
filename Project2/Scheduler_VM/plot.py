@@ -1,11 +1,12 @@
 import os
 import re
 import argparse
-from collections import defaultdict
-
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+
 from matplotlib.lines import Line2D
+from collections import defaultdict
 
 
 def parse_intervals(file_path):
@@ -53,23 +54,25 @@ def parse_intervals(file_path):
 
 
 def parse_goodness_scores(file_path):
-    """Parse goodness scores for each process."""
+    """Parses goodness scores from the file and returns a dictionary of scores and a list of timestamps."""
     goodness_data = defaultdict(list)
     timestamps = []
 
     with open(file_path, 'r') as file:
         for line in file:
-            match = re.search(r'(\d+)ms - Goodness scores: (.+)', line)
+            match = re.search(r"(\d+)ms - Goodness scores: (.+)", line)
             if not match:
                 continue
 
-            timestamp, scores = match.groups()
-            timestamp = int(timestamp)
-            timestamps.append(timestamp)
+            timestamp = int(match.group(1))
+            scores_str = match.group(2)
 
-            for proc in re.finditer(r'\(\(([^)]+)\), ([\d.]+)\)', scores):
-                process_name, goodness = proc.groups()
-                goodness_data[process_name].append((timestamp, float(goodness)))
+            for score_match in re.finditer(r"\(\(([^)]+)\), ([\d.]+)\)", scores_str):
+                process = score_match.group(1)
+                value = float(score_match.group(2))
+                goodness_data[process].append((timestamp, value))
+
+        timestamps.append(timestamp)
 
     return goodness_data, timestamps
 
@@ -133,26 +136,52 @@ def plot_gantt(process_intervals, sleep_times, wake_up_times, creation_times, im
         Line2D([], [], color='yellow', marker='^', linestyle='None', label='Wake Up'),
         Line2D([], [], color='red', marker='^', linestyle='None', label='Sleep'),
     ], loc='upper right')
-    plt.grid(axis='x', linestyle='--', alpha=0.7)
+
+    # Add more discrete lines on the x-axis
+    # max_time = max(end for intervals in process_intervals.values() for _, end in intervals)
+    # x_ticks = range(0, max_time + 1, 20)
+    # ax.set_xticks(x_ticks)
+    # ax.grid(axis='x', linestyle='--', alpha=0.7)
+    plt.xticks(rotation=90)
+
     plt.tight_layout()
     plt.savefig(image_path, dpi=800)
     print(f"Gantt plot saved to {image_path}")
 
 
-def plot_scatter(data, ylabel, title, image_path):
+def plot_scatter(data, ylabel, title, image_path, jitter=0.5, log_scale=False, linestyle='None'):
     """Generic scatter plot for time series data per process."""
     plt.figure(figsize=(12, 6))
 
     for process, entries in data.items():
-        times, values = zip(*entries)
+        if len(entries) == 1:
+            # Handle single data point
+            times, values = [entries[0][0]], [entries[0][1]]
+        else:
+            # Unpack multiple data points
+            times, values = zip(*entries)
+
         label = f"{process[0]}:{process[1]}" if isinstance(process, tuple) else process
-        plt.plot(times, values, marker='o', linestyle='None', label=label)
+
+        # Add jitter to x and y values
+        jittered_times = np.array(times) + np.random.uniform(-jitter, jitter, len(times))
+        jittered_values = np.array(values) + np.random.uniform(0, jitter, len(values))
+
+        plt.plot(jittered_times, jittered_values, marker='o', linestyle=linestyle, label=label)
 
     plt.xlabel('Time (ms)')
     plt.ylabel(ylabel)
+    if log_scale:
+        plt.yscale('log')
     plt.title(title)
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend()
+
+    # max_time = max(max(entry[0] for entry in entries) for entries in data.values())
+    # x_tick_interval = max_time / 10
+    # x_ticks = np.arange(0, max_time + 1, x_tick_interval)
+    plt.xticks(rotation=90)
+
     plt.tight_layout()
     plt.savefig(image_path, dpi=800)
     print(f"{title} saved to {image_path}")
@@ -179,7 +208,7 @@ def main():
     if not args.no_goodness:
         goodness_data, ts = parse_goodness_scores(args.file_path)
         goodness_path = os.path.join(output_folder, f"{filename}-goodness.png")
-        plot_scatter(goodness_data, "Goodness Score", "Goodness Scores per Process over Time", goodness_path)
+        plot_scatter(goodness_data, "Goodness Score", "Goodness Scores per Process over Time", goodness_path, jitter=0.1, log_scale=True, linestyle='-')
 
     # Expected Burst Plot
     burst_data, ts = parse_expected_bursts(args.file_path)

@@ -8,14 +8,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "list.h"
 #include "privatestructs.h"
 
+#define TIMELICE_IN_JIFFIES 10
 #define NEWTASKSLICE (NS_TO_JIFFIES(100000000))
 #define CALCULATE_EXPECTED_BURST(prev_actual_burst, prev_expected_burst) \
 		(((prev_actual_burst) + (ALPHA) * (prev_expected_burst)) / (1 + (ALPHA)))
 
 #define CALCULATE_GOODNESS() ()
+#define NS_TO_MS(ns) ns / 1000000
 
 /* Local Globals
  * rq - This is a pointer to the runqueue that the scheduler uses.
@@ -103,7 +106,7 @@ void schedule()
 								   * we entered the scheduler because current*
 								   * had requested so by setting this flag   */
 
-	time_now = sched_clock();
+	time_now = NS_TO_MS(sched_clock());
 
     // Current process lost CPU, set last in rq time and actual burst
     current->rq_last_in = time_now;
@@ -123,7 +126,7 @@ void schedule()
 	    min_rq_last_in = rq->head->next->rq_last_in;
 
 	    // Find the minimum expected burst and maximum wait time in rq (oldest task)
-		printf("%lldms - Expected bursts: ", time_now / 1000000);
+		printf("%lldms - Expected bursts: ", time_now);
 		printf("(%s, %lld)", rq->head->next->thread_info->processName, rq->head->next->expected_burst);
 
 	    for (struct task_struct *curr = rq->head->next->next; curr != rq->head; curr = curr->next) {
@@ -145,12 +148,13 @@ void schedule()
 	                    * (1 + max_rq_time_spent) / (1 + time_now - (double)rq->head->next->rq_last_in);
 		best_task = rq->head->next;
 
-		printf("%lldms - Goodness scores: ", time_now / 1000000);
+		printf("%lldms - Goodness scores: ", time_now);
 		printf("(%s, %f)", rq->head->next->thread_info->processName, min_goodness);
 
 		for (struct task_struct *curr = rq->head->next->next; curr != rq->head; curr = curr->next) {
 			curr_goodness = (1 + (double)curr->expected_burst) / (1 + min_expected_burst)
 	                        * (1 + max_rq_time_spent) / (1 + time_now - (double)curr->rq_last_in);
+			// printf("%s: expected_burst=%f, min_expected_burst=%f, max_rq_time_spent=%f, wait_time_inq=%f, goodness=%f\n", curr->thread_info->processName, (double)curr->expected_burst, (double)min_expected_burst, (double)max_rq_time_spent, time_now - (double)curr->rq_last_in, curr_goodness);
 			printf(", (%s, %f)", curr->thread_info->processName, curr_goodness);
     		if (curr_goodness < min_goodness) {
 				min_goodness = curr_goodness;
@@ -164,7 +168,7 @@ void schedule()
 		min_expected_burst = rq->head->next->expected_burst;
 		best_task = rq->head->next;
 
-		printf("%lldms - Expected bursts: ", time_now / 1000000);
+		printf("%lldms - Expected bursts: ", time_now);
 		printf("(%s, %lld)", rq->head->next->thread_info->processName, rq->head->next->expected_burst);
 
 		for (struct task_struct *curr = rq->head->next->next; curr != rq->head; curr = curr->next) {
@@ -174,12 +178,13 @@ void schedule()
 				best_task = curr;
 			}
 		}
+		printf("\n");
     #endif
 
     // Context switch if needed
     if (best_task != current) {
 		context_switch(best_task);
-        curr_task_start_time = sched_clock();
+        curr_task_start_time = NS_TO_MS(sched_clock());
 	}
 }
 
@@ -189,11 +194,13 @@ void schedule()
  */
 void sched_fork(struct task_struct *p)
 {
-	p->time_slice = 100;
+	p->time_slice = TIMELICE_IN_JIFFIES;
 	p->expected_burst = 0;
     p->actual_burst = 0;
     p->rq_last_in = 0;
 }
+
+long long prev_sched_tick = 0;
 
 /* scheduler_tick
  * Updates information and priority
@@ -201,10 +208,11 @@ void sched_fork(struct task_struct *p)
  */
 void scheduler_tick(struct task_struct *p)
 {
-  	current->time_slice -= 10;
+  	current->time_slice -= (jiffies - prev_sched_tick);
+	prev_sched_tick = jiffies;
 
     if (current->time_slice <= 0) {
-    	current->time_slice = 100;
+    	current->time_slice = TIMELICE_IN_JIFFIES;
 		schedule();
     }
 }
@@ -220,11 +228,11 @@ void wake_up_new_task(struct task_struct *p)
 	p->prev = rq->head;
 	p->next->prev = p;
 	p->prev->next = p;
-	p->rq_last_in = sched_clock();
+	p->rq_last_in = NS_TO_MS(sched_clock());
 
 	rq->nr_running++;
 
-	printf("%lldms - Created task: %s\n", sched_clock() / 1000000, p->thread_info->processName);
+	printf("%lldms - Created task: %s\n", NS_TO_MS(sched_clock()), p->thread_info->processName);
 }
 
 /* activate_task
@@ -237,7 +245,7 @@ void activate_task(struct task_struct *p)
 	p->prev = rq->head;
 	p->next->prev = p;
 	p->prev->next = p;
-    p->rq_last_in = sched_clock();
+    p->rq_last_in = NS_TO_MS(sched_clock());
 
 	rq->nr_running++;
 }
@@ -255,8 +263,10 @@ void deactivate_task(struct task_struct *p)
 
 	rq->nr_running--;
 
-    current->actual_burst += sched_clock() - curr_task_start_time;
+    current->actual_burst += NS_TO_MS(sched_clock()) - curr_task_start_time;
 	current->expected_burst = CALCULATE_EXPECTED_BURST(current->actual_burst, current->expected_burst);
+	printf("%lldms - Expected bursts: ", NS_TO_MS(sched_clock()));
+	printf("(%s, %lld)\n", current->thread_info->processName, current->expected_burst);
     current->actual_burst = 0;
     curr_deactivated = 1;
 }

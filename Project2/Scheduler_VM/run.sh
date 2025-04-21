@@ -16,7 +16,7 @@ Usage: $0 [OPTIONS]
 Options:
   --config=FILE        Use specified configuration file from $CONFS_DIR
   --no-goodness        Disable the goodness algorithm
-  --no-debugging       Skip GDB prompt and run normally
+  --debug              Enable debugging using gdb
   --no-plot            Do not run the plot script
   --help               Show this help message
 EOF
@@ -26,7 +26,7 @@ EOF
 # INITIAL VALUES
 INPUT_FILE=""
 NO_GOODNESS=false
-NO_DEBUGGING=false
+DEBUG=false
 NO_PLOT=false
 
 # =======================================
@@ -35,7 +35,7 @@ for arg in "$@"; do
     case "$arg" in
         --config=*)      INPUT_FILE="${arg#--config=}" ;;
         --no-goodness)   NO_GOODNESS=true ;;
-        --no-debugging)  NO_DEBUGGING=true ;;
+        --debug)         DEBUG=true ;;
         --no-plot)       NO_PLOT=true ;;
         --help)          print_help; exit 0 ;;
         *) echo "Unknown option: $arg"; print_help; exit 1 ;;
@@ -80,13 +80,7 @@ fi
 if [ "$NO_GOODNESS" = true ]; then
     MAKE_TARGET="no-goodness"
 else
-    echo ""
-    read -p "Do you want to enable the goodness algorithm? (y/n) [default: y]: " GOODNESS_CHOICE
-    if [[ "$GOODNESS_CHOICE" =~ ^[Nn]$ ]]; then
-        MAKE_TARGET="no-goodness"
-    else
-        MAKE_TARGET="all"
-    fi
+    MAKE_TARGET="all"
 fi
 
 make -C src "$MAKE_TARGET"
@@ -100,17 +94,11 @@ OUTPUT_FILE="$OUTPUT_DIR/$(basename "${INPUT_FILE%.conf}").out"
 
 # =======================================
 # DEBUGGING / EXECUTION
-if [ "$NO_DEBUGGING" = true ]; then
-    $EXECUTABLE "$INPUT_FILE" > "$OUTPUT_FILE"
+if [ "$DEBUG" = true ]; then
+    gdb --args "$EXECUTABLE" "$INPUT_FILE"
+    exit 0
 else
-    echo ""
-    read -p "Do you want to debug the program using gdb? (y/n) [default: n]: " DEBUG_CHOICE
-    if [[ "$DEBUG_CHOICE" =~ ^[Yy]$ ]]; then
-        gdb --args "$EXECUTABLE" "$INPUT_FILE"
-        exit 0
-    else
-        $EXECUTABLE "$INPUT_FILE" > "$OUTPUT_FILE"
-    fi
+    $EXECUTABLE "$INPUT_FILE" > "$OUTPUT_FILE"
 fi
 
 if [ $? -ne 0 ]; then
