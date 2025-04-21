@@ -17,7 +17,9 @@
 #define CALCULATE_EXPECTED_BURST(prev_actual_burst, prev_expected_burst) \
 		(((prev_actual_burst) + (ALPHA) * (prev_expected_burst)) / (1 + (ALPHA)))
 
-#define CALCULATE_GOODNESS() ()
+#define CALCULATE_GOODNESS(expected_burst, min_expected_burst, max_waiting_in_rq, waiting_in_rq) \
+		((1 + expected_burst) / (1 + min_expected_burst)) * ((1 + max_waiting_in_rq) / (1 + waiting_in_rq))
+
 #define NS_TO_MS(ns) ns / 1000000
 
 /* Local Globals
@@ -145,16 +147,18 @@ void schedule()
 
 	    // Calculate goodness of each process in run queue
 		max_rq_time_spent = time_now - min_rq_last_in;
-	    min_goodness = (1 + (double)rq->head->next->expected_burst) / (1 + min_expected_burst)
-	                    * (1 + max_rq_time_spent) / (1 + time_now - (double)rq->head->next->rq_last_in);
+		min_goodness = CALCULATE_GOODNESS((double)rq->head->next->expected_burst,
+										  min_expected_burst, max_rq_time_spent,
+										  time_now - (double)rq->head->next->rq_last_in);
 		best_task = rq->head->next;
 
 		printf("%lldms - Goodness scores: ", time_now);
 		printf("(%s, %f)", rq->head->next->thread_info->processName, min_goodness);
 
 		for (struct task_struct *curr = rq->head->next->next; curr != rq->head; curr = curr->next) {
-			curr_goodness = (1 + (double)curr->expected_burst) / (1 + min_expected_burst)
-	                        * (1 + max_rq_time_spent) / (1 + time_now - (double)curr->rq_last_in);
+			curr_goodness = CALCULATE_GOODNESS((double)curr->expected_burst,
+											   min_expected_burst, max_rq_time_spent,
+											   time_now - (double)curr->rq_last_in);
 			// printf("%s: expected_burst=%f, min_expected_burst=%f, max_rq_time_spent=%f, wait_time_inq=%f, goodness=%f\n", curr->thread_info->processName, (double)curr->expected_burst, (double)min_expected_burst, (double)max_rq_time_spent, time_now - (double)curr->rq_last_in, curr_goodness);
 			printf(", (%s, %f)", curr->thread_info->processName, curr_goodness);
     		if (curr_goodness < min_goodness) {

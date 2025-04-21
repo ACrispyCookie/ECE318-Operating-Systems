@@ -5,18 +5,23 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from matplotlib.lines import Line2D
 from collections import defaultdict
+from matplotlib.lines import Line2D
+from matplotlib.widgets import CheckButtons
 
+
+# ========== PARSERS ==========
 
 def parse_intervals(file_path):
-    """Parse process execution intervals, sleep times, wake-up times, and creation times from the file."""
+    """Parse process execution, sleep, wake-up, and creation times from the trace log."""
     process_intervals = defaultdict(list)
     sleep_times = defaultdict(list)
     wake_up_times = defaultdict(list)
     creation_times = defaultdict(list)
+
     active_process = None
     start_time = None
+    last_timestamp = None
 
     with open(file_path, 'r') as file:
         for line in file:
@@ -28,12 +33,10 @@ def parse_intervals(file_path):
             if in_match:
                 process_info, timestamp = in_match.groups()
                 timestamp = int(timestamp)
-
-                if active_process is not None and start_time is not None:
+                if active_process and start_time is not None:
                     process_intervals[active_process].append((start_time, timestamp))
-
-                active_process = process_info
-                start_time = timestamp
+                active_process, start_time = process_info, timestamp
+                last_timestamp = timestamp
 
             elif sleep_match:
                 process_info, timestamp = sleep_match.groups()
@@ -47,174 +50,170 @@ def parse_intervals(file_path):
                 timestamp, process_info = creation_match.groups()
                 creation_times[process_info].append(int(timestamp))
 
-        if active_process is not None and start_time is not None:
-            process_intervals[active_process].append((start_time, timestamp))
+        if active_process and start_time is not None:
+            process_intervals[active_process].append((start_time, last_timestamp))
 
     return process_intervals, sleep_times, wake_up_times, creation_times
 
 
 def parse_goodness_scores(file_path):
-    """Parses goodness scores from the file and returns a dictionary of scores and a list of timestamps."""
+    """Parse goodness scores from the trace log."""
     goodness_data = defaultdict(list)
-    timestamps = []
 
     with open(file_path, 'r') as file:
         for line in file:
             match = re.search(r"(\d+)ms - Goodness scores: (.+)", line)
-            if not match:
-                continue
+            if match:
+                timestamp = int(match.group(1))
+                scores_str = match.group(2)
+                for score_match in re.finditer(r"\(\(([^)]+)\), ([\d.]+)\)", scores_str):
+                    proc, score = score_match.groups()
+                    goodness_data[proc].append((timestamp, float(score)))
 
-            timestamp = int(match.group(1))
-            scores_str = match.group(2)
-
-            for score_match in re.finditer(r"\(\(([^)]+)\), ([\d.]+)\)", scores_str):
-                process = score_match.group(1)
-                value = float(score_match.group(2))
-                goodness_data[process].append((timestamp, value))
-
-        timestamps.append(timestamp)
-
-    return goodness_data, timestamps
+    return goodness_data
 
 
 def parse_expected_bursts(file_path):
-    """Parse expected CPU burst lengths for each process."""
-    expected_burst_data = defaultdict(list)
-    timestamps = []
+    """Parse expected burst values from the trace log."""
+    burst_data = defaultdict(list)
 
     with open(file_path, 'r') as file:
         for line in file:
             match = re.search(r'(\d+)ms - Expected bursts: (.+)', line)
-            if not match:
-                continue
+            if match:
+                timestamp = int(match.group(1))
+                bursts = match.group(2)
+                for proc in re.finditer(r'\(\(([^:]+):(\d+)\), (\d+)\)', bursts):
+                    name, pid, burst = proc.groups()
+                    burst_data[(name, int(pid))].append((timestamp, int(burst)))
 
-            timestamp, bursts = match.groups()
-            timestamp = int(timestamp)
-            timestamps.append(timestamp)
-
-            for proc in re.finditer(r'\(\(([^:]+):(\d+)\), (\d+)\)', bursts):
-                name, pid, burst = proc.groups()
-                expected_burst_data[(name, int(pid))].append((timestamp, int(burst)))
-
-    return expected_burst_data, timestamps
+    return burst_data
 
 
-def plot_gantt(process_intervals, sleep_times, wake_up_times, creation_times, image_path):
-    """Plot a Gantt chart of process execution, sleep times, wake-up times, and creation times."""
+# ========== PLOTS ==========
+
+def plot_gantt(intervals, sleeps, wakeups, creations, image_path):
+    """Plot Gantt chart for process execution and state transitions."""
     fig, ax = plt.subplots(figsize=(10, 6))
     yticks, ylabels = [], []
 
-    # Sort processes by ID (extracted from the process name)
-    sorted_processes = sorted(process_intervals.items(), key=lambda x: int(x[0].split(':')[1]))
+    sorted_procs = sorted(intervals.items(), key=lambda x: int(x[0].split(":")[1]))
 
-    for i, (process, intervals) in enumerate(sorted_processes):
+    for i, (proc, times) in enumerate(sorted_procs):
         yticks.append(i)
-        ylabels.append(process)
+        ylabels.append(proc)
 
-        # Plot execution intervals
-        for start, end in intervals:
+        for start, end in times:
             ax.broken_barh([(start, end - start)], (i - 0.4, 0.8), facecolors='tab:blue')
 
-        # Plot sleep times
-        for sleep_time in sleep_times.get(process, []):
-            ax.plot(sleep_time, i, 'r^', label='Sleep' if i == 0 else "")
-
-        # Plot wake-up times
-        for wake_up_time in wake_up_times.get(process, []):
-            ax.plot(wake_up_time, i, 'y^', label='Wake Up' if i == 0 else "")
-
-        # Plot creation times
-        for creation_time in creation_times.get(process, []):
-            ax.plot(creation_time, i, 'g^', label='Created' if i == 0 else "")
+        for t in sleeps.get(proc, []):
+            ax.plot(t, i, 'r^', label='Sleep' if i == 0 else "")
+        for t in wakeups.get(proc, []):
+            ax.plot(t, i, 'y^', label='Wake Up' if i == 0 else "")
+        for t in creations.get(proc, []):
+            ax.plot(t, i, 'g^', label='Created' if i == 0 else "")
 
     ax.set_yticks(yticks)
     ax.set_yticklabels(ylabels)
     ax.set_xlabel('Time (ms)')
     ax.set_title('Process Execution Timeline')
+
     ax.legend(handles=[
         Line2D([], [], color='green', marker='^', linestyle='None', label='Created'),
         Line2D([], [], color='yellow', marker='^', linestyle='None', label='Wake Up'),
         Line2D([], [], color='red', marker='^', linestyle='None', label='Sleep'),
     ], loc='upper right')
 
-    # Add more discrete lines on the x-axis
-    # max_time = max(end for intervals in process_intervals.values() for _, end in intervals)
-    # x_ticks = range(0, max_time + 1, 20)
-    # ax.set_xticks(x_ticks)
-    # ax.grid(axis='x', linestyle='--', alpha=0.7)
     plt.xticks(rotation=90)
-
     plt.tight_layout()
     plt.savefig(image_path, dpi=800)
     print(f"Gantt plot saved to {image_path}")
+    return plt
 
 
-def plot_scatter(data, ylabel, title, image_path, jitter=0.5, log_scale=False, linestyle='None'):
-    """Generic scatter plot for time series data per process."""
-    plt.figure(figsize=(12, 6))
+def plot_scatter(data, ylabel, title, image_path, jitter=0.5, log_scale=False, linestyle='None', toggle_figs=True):
+    """Plot scatter plot with interactive visibility toggling using CheckButtons."""
+    fig, ax = plt.subplots(figsize=(12, 6))
 
-    for process, entries in data.items():
-        if len(entries) == 1:
-            # Handle single data point
-            times, values = [entries[0][0]], [entries[0][1]]
-        else:
-            # Unpack multiple data points
-            times, values = zip(*entries)
+    lines, labels, visibility = [], [], []
 
-        label = f"{process[0]}:{process[1]}" if isinstance(process, tuple) else process
+    for proc, entries in data.items():
+        times, values = zip(*entries) if len(entries) > 1 else ([entries[0][0]], [entries[0][1]])
+        label = f"{proc[0]}:{proc[1]}" if isinstance(proc, tuple) else proc
 
-        # Add jitter to x and y values
-        jittered_times = np.array(times) + np.random.uniform(-jitter, jitter, len(times))
-        jittered_values = np.array(values) + np.random.uniform(0, jitter, len(values))
+        x_jitter = np.random.uniform(-jitter, jitter, len(times))
+        y_jitter = np.random.uniform(0, jitter, len(values))
+        line, = ax.plot(
+            np.array(times) + x_jitter,
+            np.array(values) + y_jitter,
+            marker='o',
+            linestyle=linestyle if linestyle != 'None' else '',
+            label=label
+        )
+        lines.append(line)
+        labels.append(label)
+        visibility.append(True)
 
-        plt.plot(jittered_times, jittered_values, marker='o', linestyle=linestyle, label=label)
-
-    plt.xlabel('Time (ms)')
-    plt.ylabel(ylabel)
+    ax.set_xlabel("Time (ms)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
     if log_scale:
-        plt.yscale('log')
-    plt.title(title)
-    plt.grid(True, linestyle='--', alpha=0.7)
-    plt.legend()
-
-    # max_time = max(max(entry[0] for entry in entries) for entries in data.values())
-    # x_tick_interval = max_time / 10
-    # x_ticks = np.arange(0, max_time + 1, x_tick_interval)
+        ax.set_yscale('log')
+    ax.grid(True, linestyle='--', alpha=0.7)
     plt.xticks(rotation=90)
 
-    plt.tight_layout()
+    if toggle_figs:
+        # CheckButtons
+        rax = plt.axes([0.78, 0.2, 0.2, 0.6])
+        check = CheckButtons(rax, labels, visibility)
+
+        def toggle(label):
+            idx = labels.index(label)
+            lines[idx].set_visible(not lines[idx].get_visible())
+            fig.canvas.draw_idle()
+
+        check.on_clicked(toggle)
+
+        plt.tight_layout(rect=[0, 0, 0.75, 1])
+
     plt.savefig(image_path, dpi=800)
     print(f"{title} saved to {image_path}")
 
+    return plt
+
+
+# ========== MAIN ==========
 
 def main():
     matplotlib.use('TkAgg')
 
-    parser = argparse.ArgumentParser(description="Plot scheduler data from .out file")
-    parser.add_argument("file_path", help="Path to the .out file")
-    parser.add_argument("--no-goodness", action="store_true", help="Skip goodness score plot")
+    parser = argparse.ArgumentParser(description="Plot scheduler logs")
+    parser.add_argument("file_path", help="Path to .out file")
+    parser.add_argument("--no-goodness", action="store_true", help="Skip goodness plot")
     args = parser.parse_args()
 
-    output_folder = 'plots/sjf/' if args.no_goodness else 'plots/sjf-mod/'
-    os.makedirs(output_folder, exist_ok=True)
-    filename = os.path.basename(args.file_path).replace('.out', '')
+    output_dir = "plots/sjf-mod/" if not args.no_goodness else "plots/sjf/"
+    os.makedirs(output_dir, exist_ok=True)
+    basename = os.path.basename(args.file_path).replace(".out", "")
 
     # Gantt Plot
-    intervals, sleeps, wake_ups, creations = parse_intervals(args.file_path)
-    gantt_path = os.path.join(output_folder, f"{filename}-gantt.png")
-    plot_gantt(intervals, sleeps, wake_ups, creations, gantt_path)
+    intervals, sleeps, wakeups, creations = parse_intervals(args.file_path)
+    gantt_img = os.path.join(output_dir, f"{basename}-gantt.png")
+    plot_gantt(intervals, sleeps, wakeups, creations, gantt_img)
 
-    # Goodness Score Plot
+    # Goodness Plot
     if not args.no_goodness:
-        goodness_data, ts = parse_goodness_scores(args.file_path)
-        goodness_path = os.path.join(output_folder, f"{filename}-goodness.png")
-        plot_scatter(goodness_data, "Goodness Score", "Goodness Scores per Process over Time", goodness_path, jitter=0.1, log_scale=True, linestyle='-')
+        goodness = parse_goodness_scores(args.file_path)
+        goodness_img = os.path.join(output_dir, f"{basename}-goodness.png")
+        plot_scatter(goodness, "Goodness Score", "Goodness Scores over Time", goodness_img,
+                     jitter=0.1, log_scale=True, linestyle='-')
 
     # Expected Burst Plot
-    burst_data, ts = parse_expected_bursts(args.file_path)
-    burst_path = os.path.join(output_folder, f"{filename}-expected_burst.png")
-    plot_scatter(burst_data, "Expected Burst", "Expected Bursts per Process over Time", burst_path)
+    bursts = parse_expected_bursts(args.file_path)
+    burst_img = os.path.join(output_dir, f"{basename}-expected_burst.png")
+    plot_scatter(bursts, "Expected Burst", "Expected Bursts over Time", burst_img, toggle_figs=False)
 
+    plt.show()
 
 if __name__ == "__main__":
     main()
