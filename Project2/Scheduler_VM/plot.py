@@ -93,9 +93,13 @@ def parse_expected_bursts(file_path):
 # ========== PLOTS ==========
 
 def plot_gantt(intervals, sleeps, wakeups, creations, image_path):
-    """Plot Gantt chart for process execution and state transitions."""
+    """Plot Gantt chart for process execution and state transitions with consistent colors."""
     fig, ax = plt.subplots(figsize=(10, 6))
     yticks, ylabels = [], []
+
+    # Get the default color cycle
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    process_colors = {}
 
     sorted_procs = sorted(intervals.items(), key=lambda x: int(x[0].split(":")[1]))
 
@@ -103,8 +107,11 @@ def plot_gantt(intervals, sleeps, wakeups, creations, image_path):
         yticks.append(i)
         ylabels.append(proc)
 
+        # Assign a color to the process
+        process_colors[proc] = color_cycle[i % len(color_cycle)]
+
         for start, end in times:
-            ax.broken_barh([(start, end - start)], (i - 0.4, 0.8), facecolors='tab:blue')
+            ax.broken_barh([(start, end - start)], (i - 0.4, 0.8), facecolors=process_colors[proc])
 
         for t in sleeps.get(proc, []):
             ax.plot(t, i, 'r^', label='Sleep' if i == 0 else "")
@@ -161,6 +168,7 @@ def plot_scatter(data, ylabel, title, image_path, jitter=0.5, log_scale=False, l
         ax.set_yscale('log')
     ax.grid(True, linestyle='--', alpha=0.7)
     plt.xticks(rotation=90)
+    plt.legend()
 
     if toggle_figs:
         # CheckButtons
