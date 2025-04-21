@@ -10,10 +10,13 @@
 CC = gcc
 
 # Put any flags for the C compiler here
-CFLAGS = -Wall -g $(GOODNESS_FLAG)
+CFLAGS = -Wall -g $(GOODNESS_FLAG) -DTIMESLICE=$(TIMESLICE)
 
 # Default goodness flag
 GOODNESS_FLAG = -DENABLE_GOODNESS_ALGORITHM=1
+
+# Default value for timeslice (in jiffies)
+TIMESLICE ?= 10
 
 # The source files for the Virtual Machine
 LIB_SRCS = cpuinit.c cpu.c

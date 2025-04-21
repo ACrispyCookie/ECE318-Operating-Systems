@@ -18,6 +18,7 @@ Options:
   --no-goodness        Disable the goodness algorithm
   --debug              Enable debugging using gdb
   --no-plot            Do not run the plot script
+  --timeslice=N        Timeslice value for each process (in jiffies)
   --help               Show this help message
 EOF
 }
@@ -28,6 +29,7 @@ INPUT_FILE=""
 NO_GOODNESS=false
 DEBUG=false
 NO_PLOT=false
+TIMESLICE=10
 
 # =======================================
 # PARSE ARGUMENTS
@@ -37,6 +39,7 @@ for arg in "$@"; do
         --no-goodness)   NO_GOODNESS=true ;;
         --debug)         DEBUG=true ;;
         --no-plot)       NO_PLOT=true ;;
+        --timeslice=*)   TIMESLICE="${arg#--timeslice=}" ;;
         --help)          print_help; exit 0 ;;
         *) echo "Unknown option: $arg"; print_help; exit 1 ;;
     esac
@@ -83,7 +86,7 @@ else
     MAKE_TARGET="all"
 fi
 
-make -C src "$MAKE_TARGET"
+make -C src "$MAKE_TARGET" TIMESLICE="$TIMESLICE"
 if [ $? -ne 0 ]; then
     echo "Make command failed."
     exit 1

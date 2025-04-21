@@ -12,7 +12,7 @@
 #include "list.h"
 #include "privatestructs.h"
 
-#define TIMELICE_IN_JIFFIES 10
+#define TIMELICE_IN_JIFFIES TIMESLICE
 #define NEWTASKSLICE (NS_TO_JIFFIES(100000000))
 #define CALCULATE_EXPECTED_BURST(prev_actual_burst, prev_expected_burst) \
 		(((prev_actual_burst) + (ALPHA) * (prev_expected_burst)) / (1 + (ALPHA)))
@@ -28,6 +28,7 @@ struct runqueue *rq;
 struct task_struct *current;
 unsigned long long curr_task_start_time;
 short int curr_deactivated;
+long long last_sched_tick = 0;
 
 /* External Globals
  * jiffies - A discrete unit of time used for scheduling.
@@ -200,16 +201,14 @@ void sched_fork(struct task_struct *p)
     p->rq_last_in = 0;
 }
 
-long long prev_sched_tick = 0;
-
 /* scheduler_tick
  * Updates information and priority
  * for the task that is currently running.
  */
 void scheduler_tick(struct task_struct *p)
 {
-  	current->time_slice -= (jiffies - prev_sched_tick);
-	prev_sched_tick = jiffies;
+  	current->time_slice -= (jiffies - last_sched_tick);
+	last_sched_tick = jiffies;
 
     if (current->time_slice <= 0) {
     	current->time_slice = TIMELICE_IN_JIFFIES;
