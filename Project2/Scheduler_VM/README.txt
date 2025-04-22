@@ -49,3 +49,21 @@ You can skip the generation of the plots using the `--no-plot` option:
 ```cmd
 bash run.sh --no-plot
 ```
+
+### Additional Script Arguments
+
+The `run.sh` script supports several command-line options:
+
+- `--help`  
+    Displays a help message with a list of all supported options.
+
+    ```cmd
+        bash run.sh --help
+    ```
+
+- `--hide=all`  
+    Prevents plots from being displayed. The plot images will still be saved to disk if applicable.
+    
+    ```cmd
+        bash run.sh --hide=all
+    ```
