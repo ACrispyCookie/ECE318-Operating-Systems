@@ -91,6 +91,48 @@ def parse_expected_bursts(file_path):
 
 
 # ========== PLOTS ==========
+def plot_cpu_usage(intervals, image_path, slice_size=10):
+    """Plot CPU usage per time slice for non-IO processes."""
+    # Flatten intervals: list of (start, end) per process
+    all_intervals = []
+    for proc, ranges in intervals.items():
+        if 'IO' in proc:
+            continue  # Skip IO processes
+        for start, end in ranges:
+            all_intervals.append((start, end))
+
+    if not all_intervals:
+        print("No non-IO processes to analyze.")
+        return
+
+    max_time = max(end for _, end in all_intervals)
+    num_slices = (max_time + slice_size - 1) // slice_size  # ceil division
+
+    usage = np.zeros(num_slices)
+
+    for start, end in all_intervals:
+        slice_start = start // slice_size
+        slice_end = (end - 1) // slice_size  # inclusive end
+        for i in range(slice_start, slice_end + 1):
+            slice_start_time = i * slice_size
+            slice_end_time = slice_start_time + slice_size
+            overlap_start = max(start, slice_start_time)
+            overlap_end = min(end, slice_end_time)
+            usage[i] += overlap_end - overlap_start
+
+    percent_usage = (usage / slice_size) * 100  # convert to percentage
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.plot(range(len(percent_usage)), percent_usage, marker='o', linestyle='-')
+    ax.set_title(f"Non-IO CPU Usage (per {slice_size} ms slice)")
+    ax.set_xlabel(f"Slice index (each = {slice_size} ms)")
+    ax.set_ylabel("CPU Usage (%)")
+    ax.set_ylim(0, 100)
+    ax.grid(True, linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.savefig(image_path, dpi=800)
+    print(f"CPU usage plot saved to {image_path}")
+    return plt
 
 def plot_gantt(intervals, sleeps, wakeups, creations, image_path):
     """Plot Gantt chart for process execution and state transitions with consistent colors."""
@@ -208,6 +250,10 @@ def main():
     intervals, sleeps, wakeups, creations = parse_intervals(args.file_path)
     gantt_img = os.path.join(output_dir, f"{basename}-gantt.png")
     plot_gantt(intervals, sleeps, wakeups, creations, gantt_img)
+
+    # CPU usage plot
+    cpu_img = os.path.join(output_dir, f"{basename}-cpu_usage.png")
+    plot_cpu_usage(intervals, cpu_img, slice_size=500)  # Or change slice size here
 
     # Goodness Plot
     if not args.no_goodness:
