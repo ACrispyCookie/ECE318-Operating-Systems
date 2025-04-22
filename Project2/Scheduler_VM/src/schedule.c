@@ -212,13 +212,15 @@ void sched_fork(struct task_struct *p)
  */
 void scheduler_tick(struct task_struct *p)
 {
-  	current->time_slice -= (jiffies - last_sched_tick);
-	last_sched_tick = jiffies;
-
-    if (current->time_slice <= 0) {
+	// Timeslice of process expired, call scheduler, otherwise decrease the time slice.
+    if ((jiffies - last_sched_tick) > current->time_slice) {
     	current->time_slice = TIMELICE_IN_JIFFIES;
+    	last_sched_tick = jiffies;
 		schedule();
-    }
+    } else {
+    	current->time_slice -= (jiffies - last_sched_tick);
+    	last_sched_tick = jiffies;
+	}
 }
 
 /* wake_up_new_task

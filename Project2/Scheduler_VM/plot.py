@@ -100,7 +100,7 @@ def plot_cpu_usage(intervals, image_path, slice_size=10):
     # Flatten intervals: list of (start, end) per process
     all_intervals = []
     for proc, ranges in intervals.items():
-        if 'IO' in proc:
+        if 'IO' in proc or 'Init' in proc:
             continue  # Skip IO processes
         for start, end in ranges:
             all_intervals.append((start, end))
@@ -260,7 +260,7 @@ def main():
 
     # CPU usage plot
     cpu_img = os.path.join(output_dir, f"{basename}-cpu_usage.png")
-    plot_cpu_usage(intervals, cpu_img, slice_size=500)  # Or change slice size here
+    plot_cpu_usage(intervals, cpu_img, slice_size=500)
 
     # Goodness Plot
     if not args.no_goodness:
