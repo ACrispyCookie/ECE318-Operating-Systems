@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import warnings
 
-
 from collections import defaultdict
 from matplotlib.lines import Line2D
 from matplotlib.widgets import CheckButtons
@@ -111,7 +110,6 @@ def plot_cpu_usage(intervals, image_path, slice_size=10):
     ax.set_ylabel("CPU Usage (%)")
     ax.set_ylim(0, 100)
     ax.grid(True, linestyle='--', alpha=0.7)
-    # Ignore layout warnings
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
         plt.tight_layout()
@@ -120,14 +118,76 @@ def plot_cpu_usage(intervals, image_path, slice_size=10):
     return fig
 
 
+def plot_scatter(data, ylabel, title, image_path, jitter=0.5,
+                 log_scale=False, linestyle='None', toggle_figs=True,
+                 xrotation=90, show_legend=True, force_unique_colors=False):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    lines, labels, visibility = [], [], []
+
+    if force_unique_colors:
+        # Use several distinct color maps and combine them
+        color_palettes = [plt.cm.tab20.colors, plt.cm.tab10.colors, plt.cm.Set3.colors]
+        combined_colors = [color for palette in color_palettes for color in palette]
+        if len(data) > len(combined_colors):
+            # Extend with a perceptually uniform colormap if too many items
+            extra_colors = plt.cm.viridis(np.linspace(0, 1, len(data) - len(combined_colors)))
+            combined_colors.extend(extra_colors)
+
+        color_map = {proc: combined_colors[i % len(combined_colors)] for i, proc in enumerate(data.keys())}
+    else:
+        color_map = {}
+
+    for i, (proc, entries) in enumerate(data.items()):
+        times, values = zip(*entries) if len(entries) > 1 else ([entries[0][0]], [entries[0][1]])
+        lbl = f"{proc[0]}:{proc[1]}" if isinstance(proc, tuple) else proc
+        xj = np.random.uniform(-jitter, jitter, len(times))
+        yj = np.random.uniform(0, jitter, len(values))
+        line, = ax.plot(np.array(times) + xj, np.array(values) + yj,
+                        marker='o',
+                        linestyle=linestyle if linestyle != 'None' else '',
+                        label=lbl,
+                        color=color_map.get(proc))  # Use custom color if specified
+        lines.append(line)
+        labels.append(lbl)
+        visibility.append(True)
+
+    ax.set_xlabel("Time (ms)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    if log_scale:
+        ax.set_yscale('log')
+    ax.grid(True, linestyle='--', alpha=0.7)
+    plt.xticks(rotation=xrotation)
+
+    if toggle_figs:
+        rax = plt.axes([0.78, 0.2, 0.2, 0.6])
+        chk = CheckButtons(rax, labels, visibility)
+        chk.on_clicked(lambda lbl: lines[labels.index(lbl)].set_visible(not lines[labels.index(lbl)].get_visible()) or fig.canvas.draw_idle())
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
+            plt.tight_layout(rect=[0, 0, 0.75, 1])
+    elif show_legend:
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
+            plt.tight_layout(rect=[0, 0, 1, 1])
+    else:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
+            plt.tight_layout()
+
+    plt.savefig(image_path, dpi=800)
+    print(f"{title} saved to {image_path}")
+    return fig
+
+
 def plot_gantt(intervals, sleeps, wakeups, creations, image_path, timeslice,
-               show_spawn=True, show_sleep=True, show_wake=True):
+               show_spawn=True, show_sleep=True, show_wake=True, xrotation=90):
     fig, ax = plt.subplots(figsize=(10, 6))
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     yticks, ylabels = [], []
     procs = sorted(intervals.items(), key=lambda x: int(x[0].split(":")[1]))
 
-    # Draw processes
     for i, (proc, times) in enumerate(procs):
         yticks.append(i)
         ylabels.append(proc)
@@ -150,7 +210,6 @@ def plot_gantt(intervals, sleeps, wakeups, creations, image_path, timeslice,
     ax.text(0.99, 0.01, f"Timeslice: {timeslice} jiffies", transform=ax.transAxes,
             fontsize=10, color='gray', ha='right', va='bottom', alpha=0.7)
 
-    # Build legend dynamically
     legend_handles = []
     if show_spawn:
         legend_handles.append(Line2D([], [], color='green', marker='^', linestyle='None', label='Spawn'))
@@ -159,10 +218,10 @@ def plot_gantt(intervals, sleeps, wakeups, creations, image_path, timeslice,
     if show_wake:
         legend_handles.append(Line2D([], [], color='yellow', marker='^', linestyle='None', label='Wake Up'))
     if legend_handles:
-        ax.legend(handles=legend_handles, loc='upper right')
+        ax.legend(handles=legend_handles, loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.tight_layout(rect=[0, 0, 0.85, 1])
 
-    plt.xticks(rotation=90)
-    # Ignore layout warnings
+    plt.xticks(rotation=xrotation)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
         plt.tight_layout()
@@ -170,36 +229,6 @@ def plot_gantt(intervals, sleeps, wakeups, creations, image_path, timeslice,
     print(f"Gantt plot saved to {image_path}")
     return fig
 
-
-def plot_scatter(data, ylabel, title, image_path, jitter=0.5, log_scale=False, linestyle='None', toggle_figs=True):
-    fig, ax = plt.subplots(figsize=(12, 6))
-    lines, labels, visibility = [], [], []
-    for proc, entries in data.items():
-        times, values = zip(*entries) if len(entries) > 1 else ([entries[0][0]], [entries[0][1]])
-        lbl = f"{proc[0]}:{proc[1]}" if isinstance(proc, tuple) else proc
-        xj = np.random.uniform(-jitter, jitter, len(times))
-        yj = np.random.uniform(0, jitter, len(values))
-        line, = ax.plot(np.array(times) + xj, np.array(values) + yj,
-                         marker='o', linestyle=linestyle if linestyle != 'None' else '', label=lbl)
-        lines.append(line); labels.append(lbl); visibility.append(True)
-    ax.set_xlabel("Time (ms)")
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    if log_scale: ax.set_yscale('log')
-    ax.grid(True, linestyle='--', alpha=0.7)
-    plt.xticks(rotation=90)
-    plt.legend()
-    if toggle_figs:
-        rax = plt.axes([0.78, 0.2, 0.2, 0.6])
-        chk = CheckButtons(rax, labels, visibility)
-        chk.on_clicked(lambda lbl: lines[labels.index(lbl)].set_visible(not lines[labels.index(lbl)].get_visible()) or fig.canvas.draw_idle())
-        # Ignore layout warnings
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
-            plt.tight_layout(rect=[0, 0, 0.75, 1])
-    plt.savefig(image_path, dpi=800)
-    print(f"{title} saved to {image_path}")
-    return fig
 
 # ========== MAIN ==========
 
@@ -223,28 +252,51 @@ def main():
 
     print("\n#################### Start plotting process ####################\n")
     figs = {}
-    figs['g'] = plot_gantt(intervals, sleeps, wakeups, creations,
-                            os.path.join(outdir, f"{base}-gantt.png"), timeslice,
-                            show_spawn = True,
-                            show_sleep = True,
-                            show_wake  = True)
-    figs['c'] = plot_cpu_usage(intervals,
-                               os.path.join(outdir, f"{base}-cpu_usage.png"), slice_size=args.cpu_graph_slice)
+    figs['g'] = plot_gantt(
+        intervals, sleeps, wakeups, creations,
+        os.path.join(outdir, f"{base}-gantt.png"),
+        timeslice,
+        show_spawn = False,
+        show_sleep = False,
+        show_wake  = False,
+        xrotation=90
+    )
+
+    figs['c'] = plot_cpu_usage(
+        intervals,
+        os.path.join(outdir, f"{base}-cpu_usage.png"),
+        slice_size=args.cpu_graph_slice
+    )
+
     if not args.no_goodness:
         goodness = parse_goodness_scores(args.file_path)
         goodness = {k: v for k, v in goodness.items() if "Init" not in k}
-        figs['s'] = plot_scatter(goodness, "Goodness Score",
-                                 "Goodness Scores over Time",
-                                 os.path.join(outdir, f"{base}-goodness.png"),
-                                 jitter=0.1, log_scale=True, linestyle='-', toggle_figs=True)
+        figs['s'] = plot_scatter(
+            goodness,
+            "Goodness Score",
+            "Goodness Scores over Time",
+            os.path.join(outdir, f"{base}-goodness.png"),
+            jitter=0.1,
+            log_scale=True,
+            linestyle='-',
+            toggle_figs=True,
+            force_unique_colors=True,
+            xrotation=0
+        )
+
     bursts = parse_expected_bursts(args.file_path)
     bursts = {k: v for k, v in bursts.items() if "Init" not in k[0]}
-    figs['b'] = plot_scatter(bursts, "Expected Burst",
-                             "Expected Bursts over Time",
-                             os.path.join(outdir, f"{base}-expected_burst.png"),
-                             toggle_figs=False)
+    figs['b'] = plot_scatter(
+        bursts,
+        "Expected Burst",
+        "Expected Bursts over Time",
+        os.path.join(outdir, f"{base}-expected_burst.png"),
+        toggle_figs=False,
+        xrotation=0,
+        show_legend=True,
+        force_unique_colors=True
+    )
 
-    # Close hidden figs, show rest
     for key, fig in figs.items():
         if key in hide_flags and fig is not None:
             plt.close(fig)
