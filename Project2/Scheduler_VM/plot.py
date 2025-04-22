@@ -4,6 +4,8 @@ import argparse
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import warnings
+
 
 from collections import defaultdict
 from matplotlib.lines import Line2D
@@ -109,7 +111,10 @@ def plot_cpu_usage(intervals, image_path, slice_size=10):
     ax.set_ylabel("CPU Usage (%)")
     ax.set_ylim(0, 100)
     ax.grid(True, linestyle='--', alpha=0.7)
-    plt.tight_layout()
+    # Ignore layout warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
+        plt.tight_layout()
     plt.savefig(image_path, dpi=800)
     print(f"CPU usage plot saved to {image_path}")
     return fig
@@ -157,7 +162,10 @@ def plot_gantt(intervals, sleeps, wakeups, creations, image_path, timeslice,
         ax.legend(handles=legend_handles, loc='upper right')
 
     plt.xticks(rotation=90)
-    plt.tight_layout()
+    # Ignore layout warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
+        plt.tight_layout()
     plt.savefig(image_path, dpi=800)
     print(f"Gantt plot saved to {image_path}")
     return fig
@@ -185,7 +193,10 @@ def plot_scatter(data, ylabel, title, image_path, jitter=0.5, log_scale=False, l
         rax = plt.axes([0.78, 0.2, 0.2, 0.6])
         chk = CheckButtons(rax, labels, visibility)
         chk.on_clicked(lambda lbl: lines[labels.index(lbl)].set_visible(not lines[labels.index(lbl)].get_visible()) or fig.canvas.draw_idle())
-        plt.tight_layout(rect=[0, 0, 0.75, 1])
+        # Ignore layout warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
+            plt.tight_layout(rect=[0, 0, 0.75, 1])
     plt.savefig(image_path, dpi=800)
     print(f"{title} saved to {image_path}")
     return fig
@@ -210,6 +221,7 @@ def main():
     base = os.path.basename(args.file_path).replace(".out", "")
     intervals, sleeps, wakeups, creations, timeslice = parse_intervals(args.file_path)
 
+    print("\n#################### Start plotting process ####################\n")
     figs = {}
     figs['g'] = plot_gantt(intervals, sleeps, wakeups, creations,
                             os.path.join(outdir, f"{base}-gantt.png"), timeslice,
