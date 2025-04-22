@@ -29,6 +29,7 @@ def parse_intervals(file_path):
             sleep_match = re.search(r'\(([^)]+)\)/-?\d+/(\d+)ms - Going to Sleep', line)
             wake_up_match = re.search(r'\(([^)]+)\)/-?\d+/(\d+)ms - Waking Up from Sleep', line)
             creation_match = re.search(r'(\d+)ms - Created task: \(([^)]+)\)', line)
+            timeslice_match = re.search(r'Selected Timeslice: (\d+)', line)
 
             if in_match:
                 process_info, timestamp = in_match.groups()
@@ -50,10 +51,13 @@ def parse_intervals(file_path):
                 timestamp, process_info = creation_match.groups()
                 creation_times[process_info].append(int(timestamp))
 
+            elif timeslice_match:
+                timeslice = timeslice_match.groups()[0]
+
         if active_process and start_time is not None:
             process_intervals[active_process].append((start_time, last_timestamp))
 
-    return process_intervals, sleep_times, wake_up_times, creation_times
+    return process_intervals, sleep_times, wake_up_times, creation_times, timeslice
 
 
 def parse_goodness_scores(file_path):
@@ -92,7 +96,7 @@ def parse_expected_bursts(file_path):
 
 # ========== PLOTS ==========
 
-def plot_gantt(intervals, sleeps, wakeups, creations, image_path):
+def plot_gantt(intervals, sleeps, wakeups, creations, image_path, timeslice):
     """Plot Gantt chart for process execution and state transitions with consistent colors."""
     fig, ax = plt.subplots(figsize=(10, 6))
     yticks, ylabels = [], []
@@ -124,6 +128,9 @@ def plot_gantt(intervals, sleeps, wakeups, creations, image_path):
     ax.set_yticklabels(ylabels)
     ax.set_xlabel('Time (ms)')
     ax.set_title('Process Execution Timeline')
+
+    ax.text(0.99, 0.01, f"Timeslice: {timeslice} jiffies", transform=ax.transAxes,
+            fontsize=10, color='gray', ha='right', va='bottom', alpha=0.7)
 
     ax.legend(handles=[
         Line2D([], [], color='green', marker='^', linestyle='None', label='Created'),
@@ -205,16 +212,16 @@ def main():
     basename = os.path.basename(args.file_path).replace(".out", "")
 
     # Gantt Plot
-    intervals, sleeps, wakeups, creations = parse_intervals(args.file_path)
+    intervals, sleeps, wakeups, creations, timeslice = parse_intervals(args.file_path)
     gantt_img = os.path.join(output_dir, f"{basename}-gantt.png")
-    plot_gantt(intervals, sleeps, wakeups, creations, gantt_img)
+    plot_gantt(intervals, sleeps, wakeups, creations, gantt_img, timeslice)
 
     # Goodness Plot
     if not args.no_goodness:
         goodness = parse_goodness_scores(args.file_path)
         goodness_img = os.path.join(output_dir, f"{basename}-goodness.png")
         plot_scatter(goodness, "Goodness Score", "Goodness Scores over Time", goodness_img,
-                     jitter=0.1, log_scale=True, linestyle='-')
+                     jitter=0.1, log_scale=True, linestyle='-', toggle_figs=True)
 
     # Expected Burst Plot
     bursts = parse_expected_bursts(args.file_path)

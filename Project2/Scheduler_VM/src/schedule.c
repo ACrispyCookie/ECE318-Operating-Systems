@@ -62,6 +62,7 @@ void initschedule(struct runqueue *newrq, struct task_struct *seedTask)
 	seedTask->next = seedTask->prev = seedTask;
 	newrq->head = seedTask;
 	newrq->nr_running++;
+	printf("Selected Timeslice: %d\n", TIMELICE_IN_JIFFIES);
 }
 
 /* killschedule
