@@ -20,6 +20,12 @@
 #define CALCULATE_GOODNESS(expected_burst, min_expected_burst, max_waiting_in_rq, waiting_in_rq) \
 		((1 + expected_burst) / (1 + min_expected_burst)) * ((1 + max_waiting_in_rq) / (1 + waiting_in_rq))
 
+#ifdef NICE_VALUE
+	#define CALCULATE_TIME_SLICE(niceValue) (TIMESLICE + (TIMESLICE * niceValue) / 10)
+#else
+	#define CALCULATE_TIME_SLICE(niceValue) TIMESLICE
+#endif
+
 #define NS_TO_MS(ns) ns / 1000000
 
 /* Local Globals
@@ -63,6 +69,9 @@ void initschedule(struct runqueue *newrq, struct task_struct *seedTask)
 	newrq->head = seedTask;
 	newrq->nr_running++;
 	printf("Selected Timeslice: %d\n", TIMELICE_IN_JIFFIES);
+	#ifdef NICE_VALUE
+    	printf("Program run with --nice: Task timeslice will be determined by nice value\n");
+	#endif
 }
 
 /* killschedule
@@ -200,7 +209,7 @@ void schedule()
  */
 void sched_fork(struct task_struct *p)
 {
-	p->time_slice = TIMELICE_IN_JIFFIES;
+	p->time_slice = CALCULATE_TIME_SLICE(p->thread_info->niceValue);
 	p->expected_burst = 0;
     p->actual_burst = 0;
     p->rq_last_in = 0;
@@ -214,7 +223,7 @@ void scheduler_tick(struct task_struct *p)
 {
 	// Timeslice of process expired, call scheduler, otherwise decrease the time slice.
     if ((jiffies - last_sched_tick) > current->time_slice) {
-    	current->time_slice = TIMELICE_IN_JIFFIES;
+    	current->time_slice = CALCULATE_TIME_SLICE(p->thread_info->niceValue);
     	last_sched_tick = jiffies;
 		schedule();
     } else {

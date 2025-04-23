@@ -12,6 +12,7 @@ PLOT_SCRIPT="plot.py"
 INPUT_FILE=""
 NO_GOODNESS=false
 DEBUG=false
+NICE=false
 NO_PLOT=false
 HIDE=""
 TIMESLICE=10
@@ -29,6 +30,7 @@ Options:
   --no-goodness            Disable the goodness algorithm
   --debug                  Enable debugging using gdb
   --no-plot                Do not run the plot script
+  --nice                   Calculate timeslice for each task based on its 'NICE' value
   --timeslice=N            (Default: N=$TIMESLICE) Timeslice value for each process (in jiffies)
   --hide=FLAGS             Prevents specific graphs from displaying.
                            Use a combination of the following flags:
@@ -50,6 +52,7 @@ for arg in "$@"; do
         --config=*)      INPUT_FILE="${arg#--config=}" ;;
         --no-goodness)   NO_GOODNESS=true ;;
         --debug)         DEBUG=true ;;
+        --nice)          NICE=true ;;
         --no-plot)       NO_PLOT=true ;;
         --hide=*)        HIDE="${arg#--hide=}" ;;
         --burst-graph-slice=*) BURST_GRAPH_SLICE="${arg#--burst-graph-slice=}" ;;
@@ -94,9 +97,11 @@ if [ ! -f "$INPUT_FILE" ]; then
 fi
 
 # =======================================
-# GOODNESS ALGORITHM
+# GOODNESS ALGORITHM & NICE VALUE HANDLING
 if [ "$NO_GOODNESS" = true ]; then
     MAKE_TARGET="no-goodness"
+elif [ "$NICE" = true ]; then
+    MAKE_TARGET="nice"
 else
     MAKE_TARGET="all"
 fi
@@ -104,6 +109,7 @@ fi
 echo ""
 echo "################# Start compilation process #################"
 echo ""
+
 make -C src "$MAKE_TARGET" TIMESLICE="$TIMESLICE"
 if [ $? -ne 0 ]; then
     echo "Make command failed."

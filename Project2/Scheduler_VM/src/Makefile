@@ -10,7 +10,10 @@
 CC = gcc
 
 # Put any flags for the C compiler here
-CFLAGS = -Wall -g $(GOODNESS_FLAG) -DTIMESLICE=$(TIMESLICE)
+CFLAGS = -Wall -g $(GOODNESS_FLAG) $(NICE_FLAG) -DTIMESLICE=$(TIMESLICE)
+
+# Default value for NICE_FLAG
+NICE_FLAG =
 
 # Default goodness flag
 GOODNESS_FLAG = -DENABLE_GOODNESS_ALGORITHM=1
@@ -53,10 +56,12 @@ $(LIB_NAME): $(LIB_SRCS) $(INC_FILES)
 	ar rcsv lib$(LIB_NAME).a $(LIB_OBJS)
 
 no-goodness:
-	$(MAKE) GOODNESS_FLAG=-DENABLE_GOODNESS_ALGORITHM=0
+	$(MAKE) GOODNESS_FLAG=-DENABLE_GOODNESS_ALGORITHM=0 NICE_FLAG=$(NICE_FLAG)
 
-.PHONY: clean no-goodness
+nice:
+	$(MAKE) NICE_FLAG=-DNICE_VALUE=1 GOODNESS_FLAG=$(GOODNESS_FLAG)
+
+.PHONY: clean no-goodness nice
 
 clean:
 	rm -v $(EXEC_NAME) lib$(LIB_NAME).a *.o
-
