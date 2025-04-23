@@ -105,6 +105,7 @@ def plot_cpu_usage(intervals, image_path, slice_size=10):
     percent = (usage / slice_size) * 100
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(range(len(percent)), percent, marker='o', linestyle='-')
+    ax.fill_between(range(len(percent)), percent, alpha=0.1, color='blue')
     ax.set_title(f"Non-IO CPU Usage (per {slice_size} ms slice)")
     ax.set_xlabel(f"Slice index (each = {slice_size} ms)")
     ax.set_ylabel("CPU Usage (%)")
@@ -266,15 +267,14 @@ def main():
     base = os.path.basename(args.file_path).replace(".out", "")
     intervals, sleeps, wakeups, creations, timeslice = parse_intervals(args.file_path)
 
-    print("\n#################### Start plotting process ####################\n")
     figs = {}
     figs['g'] = plot_gantt(
         intervals, sleeps, wakeups, creations,
         os.path.join(outdir, f"{base}-gantt.png"),
         timeslice,
-        show_spawn = False,
-        show_sleep = False,
-        show_wake  = False,
+        show_spawn = True,
+        show_sleep = True,
+        show_wake  = True,
         xrotation=0
     )
 
@@ -295,9 +295,10 @@ def main():
             jitter=0.1,
             log_scale=True,
             linestyle='-',
-            toggle_figs=True,
+            toggle_figs=False,
             force_unique_colors=True,
-            xrotation=0
+            xrotation=0,
+            show_legend=True
         )
 
     bursts = parse_expected_bursts(args.file_path)

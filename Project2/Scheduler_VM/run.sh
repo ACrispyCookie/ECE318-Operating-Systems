@@ -8,31 +8,6 @@ EXECUTABLE="./src/sjf_sched"
 PLOT_SCRIPT="plot.py"
 
 # =======================================
-# USAGE INFO
-print_help() {
-    cat <<EOF
-Usage: $0 [OPTIONS]
-
-Options:
-  --config=FILE            Use specified configuration file from \$CONFS_DIR
-  --no-goodness            Disable the goodness algorithm
-  --debug                  Enable debugging using gdb
-  --no-plot                Do not run the plot script
-  --timeslice=N            Timeslice value for each process (in jiffies)
-  --hide=FLAGS             Prevents specific graphs from displaying.
-                           Use a combination of the following flags:
-                             g   - Hide Gantt chart
-                             b   - Hide Expected Burst graph
-                             c   - Hide CPU Usage graph
-                             s   - Hide Goodness Score graph
-                             all - Hide all graphs
-  --cpu-graph-slice=N      Set the slice size for the CPU graph (in ms)
-  --burst-graph-slice=N    Set the slice size for the Burst graph (in ms)
-  --help                   Show this help message
-EOF
-}
-
-# =======================================
 # INITIAL VALUES
 INPUT_FILE=""
 NO_GOODNESS=false
@@ -40,8 +15,33 @@ DEBUG=false
 NO_PLOT=false
 HIDE=""
 TIMESLICE=10
-BURST_GRAPH_SLICE=3000  # Default value
-CPU_GRAPH_SLICE=500  # Default value
+BURST_GRAPH_SLICE=3000
+CPU_GRAPH_SLICE=500
+
+# =======================================
+# USAGE INFO
+print_help() {
+    cat <<EOF
+Usage: $0 [OPTIONS]
+
+Options:
+  --config=FILE            Use specified configuration file
+  --no-goodness            Disable the goodness algorithm
+  --debug                  Enable debugging using gdb
+  --no-plot                Do not run the plot script
+  --timeslice=N            (Default: N=$TIMESLICE) Timeslice value for each process (in jiffies)
+  --hide=FLAGS             Prevents specific graphs from displaying.
+                           Use a combination of the following flags:
+                             g   - Hide Gantt chart
+                             b   - Hide Expected Burst graph
+                             c   - Hide CPU Usage graph
+                             s   - Hide Goodness Score graph
+                             all - Hide all graphs
+  --cpu-graph-slice=N      (Default: N=$CPU_GRAPH_SLICE) Set the slice size for the CPU graph (in ms)
+  --burst-graph-slice=N    (Default: N=$BURST_GRAPH_SLICE) Set the slice size for the Burst graph (in ms)
+  --help                   Show this help message
+EOF
+}
 
 # =======================================
 # PARSE ARGUMENTS
@@ -101,6 +101,9 @@ else
     MAKE_TARGET="all"
 fi
 
+echo ""
+echo "################# Start compilation process #################"
+echo ""
 make -C src "$MAKE_TARGET" TIMESLICE="$TIMESLICE"
 if [ $? -ne 0 ]; then
     echo "Make command failed."
@@ -127,6 +130,9 @@ fi
 # =======================================
 # PLOTTING
 if [ "$NO_PLOT" = false ]; then
+    echo ""
+    echo "#################  Start plotting process  ##################"
+    echo ""
     PLOT_ARGS="$OUTPUT_FILE"
     [ "$MAKE_TARGET" == "no-goodness" ] && PLOT_ARGS="$PLOT_ARGS --no-goodness"
     [ -n "$HIDE" ] && PLOT_ARGS="$PLOT_ARGS --hide=$HIDE"
