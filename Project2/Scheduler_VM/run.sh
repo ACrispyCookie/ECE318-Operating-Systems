@@ -98,19 +98,24 @@ fi
 
 # =======================================
 # GOODNESS ALGORITHM & NICE VALUE HANDLING
+GOODNESS_FLAG="-DENABLE_GOODNESS_ALGORITHM=1"
+NICE_FLAG=""
+
 if [ "$NO_GOODNESS" = true ]; then
-    MAKE_TARGET="no-goodness"
-elif [ "$NICE" = true ]; then
-    MAKE_TARGET="nice"
-else
-    MAKE_TARGET="all"
+    GOODNESS_FLAG="-DENABLE_GOODNESS_ALGORITHM=0"
 fi
+
+if [ "$NICE" = true ]; then
+    NICE_FLAG="-DNICE_VALUE=1"
+fi
+
+MAKE_TARGET="custom"
 
 echo ""
 echo "################# Start compilation process #################"
 echo ""
 
-make -C src "$MAKE_TARGET" TIMESLICE="$TIMESLICE"
+make -C src "$MAKE_TARGET" TIMESLICE="$TIMESLICE" GOODNESS_FLAG="$GOODNESS_FLAG" NICE_FLAG="$NICE_FLAG"
 if [ $? -ne 0 ]; then
     echo "Make command failed."
     exit 1
@@ -140,7 +145,7 @@ if [ "$NO_PLOT" = false ]; then
     echo "#################  Start plotting process  ##################"
     echo ""
     PLOT_ARGS="$OUTPUT_FILE"
-    [ "$MAKE_TARGET" == "no-goodness" ] && PLOT_ARGS="$PLOT_ARGS --no-goodness"
+    [ "$NO_GOODNESS" = true ] && PLOT_ARGS="$PLOT_ARGS --no-goodness"
     [ -n "$HIDE" ] && PLOT_ARGS="$PLOT_ARGS --hide=$HIDE"
     [ -n "$CPU_GRAPH_SLICE" ] && PLOT_ARGS="$PLOT_ARGS --cpu-graph-slice=$CPU_GRAPH_SLICE"
     [ -n "$BURST_GRAPH_SLICE" ] && PLOT_ARGS="$PLOT_ARGS --burst-graph-slice=$BURST_GRAPH_SLICE"

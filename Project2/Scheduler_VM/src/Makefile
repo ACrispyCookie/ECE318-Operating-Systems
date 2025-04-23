@@ -61,7 +61,11 @@ no-goodness:
 nice:
 	$(MAKE) NICE_FLAG=-DNICE_VALUE=1 GOODNESS_FLAG=$(GOODNESS_FLAG)
 
-.PHONY: clean no-goodness nice
+custom:
+	$(MAKE) GOODNESS_FLAG=$(GOODNESS_FLAG) NICE_FLAG=$(NICE_FLAG) TIMESLICE=$(TIMESLICE)
+
+.PHONY: clean no-goodness nice custom
+
 
 clean:
 	rm -v $(EXEC_NAME) lib$(LIB_NAME).a *.o
