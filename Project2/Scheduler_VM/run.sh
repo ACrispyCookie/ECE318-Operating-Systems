@@ -14,20 +14,21 @@ print_help() {
 Usage: $0 [OPTIONS]
 
 Options:
-  --config=FILE        Use specified configuration file from \$CONFS_DIR
-  --no-goodness        Disable the goodness algorithm
-  --debug              Enable debugging using gdb
-  --no-plot            Do not run the plot script
-  --timeslice=N        Timeslice value for each process (in jiffies)
-  --hide=FLAGS         Prevents specific graphs from displaying.
-                       Use a combination of the following flags:
-                         g   - Hide Gantt chart
-                         b   - Hide Expected Burst graph
-                         c   - Hide CPU Usage graph
-                         s   - Hide Goodness Score graph
-                         all - Hide all graphs
-  --cpu-graph-slice=N  Set the slice size for the CPU graph (in ms)
-  --help               Show this help message
+  --config=FILE            Use specified configuration file from \$CONFS_DIR
+  --no-goodness            Disable the goodness algorithm
+  --debug                  Enable debugging using gdb
+  --no-plot                Do not run the plot script
+  --timeslice=N            Timeslice value for each process (in jiffies)
+  --hide=FLAGS             Prevents specific graphs from displaying.
+                           Use a combination of the following flags:
+                             g   - Hide Gantt chart
+                             b   - Hide Expected Burst graph
+                             c   - Hide CPU Usage graph
+                             s   - Hide Goodness Score graph
+                             all - Hide all graphs
+  --cpu-graph-slice=N      Set the slice size for the CPU graph (in ms)
+  --burst-graph-slice=N    Set the slice size for the Burst graph (in ms)
+  --help                   Show this help message
 EOF
 }
 
@@ -39,6 +40,7 @@ DEBUG=false
 NO_PLOT=false
 HIDE=""
 TIMESLICE=10
+BURST_GRAPH_SLICE=3000  # Default value
 CPU_GRAPH_SLICE=500  # Default value
 
 # =======================================
@@ -50,6 +52,7 @@ for arg in "$@"; do
         --debug)         DEBUG=true ;;
         --no-plot)       NO_PLOT=true ;;
         --hide=*)        HIDE="${arg#--hide=}" ;;
+        --burst-graph-slice=*) BURST_GRAPH_SLICE="${arg#--burst-graph-slice=}" ;;
         --timeslice=*)   TIMESLICE="${arg#--timeslice=}" ;;
         --cpu-graph-slice=*) CPU_GRAPH_SLICE="${arg#--cpu-graph-slice=}" ;;
         --help)          print_help; exit 0 ;;
@@ -128,6 +131,7 @@ if [ "$NO_PLOT" = false ]; then
     [ "$MAKE_TARGET" == "no-goodness" ] && PLOT_ARGS="$PLOT_ARGS --no-goodness"
     [ -n "$HIDE" ] && PLOT_ARGS="$PLOT_ARGS --hide=$HIDE"
     [ -n "$CPU_GRAPH_SLICE" ] && PLOT_ARGS="$PLOT_ARGS --cpu-graph-slice=$CPU_GRAPH_SLICE"
+    [ -n "$BURST_GRAPH_SLICE" ] && PLOT_ARGS="$PLOT_ARGS --burst-graph-slice=$BURST_GRAPH_SLICE"
 
     python3 "$PLOT_SCRIPT" $PLOT_ARGS
     if [ $? -ne 0 ]; then

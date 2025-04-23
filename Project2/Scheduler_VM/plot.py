@@ -120,25 +120,33 @@ def plot_cpu_usage(intervals, image_path, slice_size=10):
 
 def plot_scatter(data, ylabel, title, image_path, jitter=0.5,
                  log_scale=False, linestyle='None', toggle_figs=True,
-                 xrotation=90, show_legend=True, force_unique_colors=False):
+                 xrotation=90, show_legend=True, force_unique_colors=False,
+                 interval=1):
     fig, ax = plt.subplots(figsize=(12, 6))
-    lines, labels, visibility = [], [], []
+    lines, labels = [], []
 
     if force_unique_colors:
-        # Use several distinct color maps and combine them
         color_palettes = [plt.cm.tab20.colors, plt.cm.tab10.colors, plt.cm.Set3.colors]
         combined_colors = [color for palette in color_palettes for color in palette]
         if len(data) > len(combined_colors):
-            # Extend with a perceptually uniform colormap if too many items
             extra_colors = plt.cm.viridis(np.linspace(0, 1, len(data) - len(combined_colors)))
             combined_colors.extend(extra_colors)
-
         color_map = {proc: combined_colors[i % len(combined_colors)] for i, proc in enumerate(data.keys())}
     else:
         color_map = {}
 
+    def aggregate(entries, interval):
+        if interval <= 1:
+            return entries
+        buckets = defaultdict(list)
+        for t, val in entries:
+            key = t // interval
+            buckets[key].append(val)
+        return [(k * interval, np.mean(v)) for k, v in sorted(buckets.items())]
+
     for i, (proc, entries) in enumerate(data.items()):
-        times, values = zip(*entries) if len(entries) > 1 else ([entries[0][0]], [entries[0][1]])
+        reduced = aggregate(entries, interval)
+        times, values = zip(*reduced) if len(reduced) > 1 else ([reduced[0][0]], [reduced[0][1]])
         lbl = f"{proc[0]}:{proc[1]}" if isinstance(proc, tuple) else proc
         xj = np.random.uniform(-jitter, jitter, len(times))
         yj = np.random.uniform(0, jitter, len(values))
@@ -146,10 +154,9 @@ def plot_scatter(data, ylabel, title, image_path, jitter=0.5,
                         marker='o',
                         linestyle=linestyle if linestyle != 'None' else '',
                         label=lbl,
-                        color=color_map.get(proc))  # Use custom color if specified
+                        color=color_map.get(proc))
         lines.append(line)
         labels.append(lbl)
-        visibility.append(True)
 
     ax.set_xlabel("Time (ms)")
     ax.set_ylabel(ylabel)
@@ -161,8 +168,15 @@ def plot_scatter(data, ylabel, title, image_path, jitter=0.5,
 
     if toggle_figs:
         rax = plt.axes([0.78, 0.2, 0.2, 0.6])
+        visibility = [True] * len(lines)
         chk = CheckButtons(rax, labels, visibility)
-        chk.on_clicked(lambda lbl: lines[labels.index(lbl)].set_visible(not lines[labels.index(lbl)].get_visible()) or fig.canvas.draw_idle())
+
+        def toggle(label):
+            idx = labels.index(label)
+            lines[idx].set_visible(not lines[idx].get_visible())
+            fig.canvas.draw_idle()
+
+        chk.on_clicked(toggle)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message=".*not compatible with tight_layout.*")
             plt.tight_layout(rect=[0, 0, 0.75, 1])
@@ -241,6 +255,8 @@ def main():
                         help="Hide specific plots: g=Gantt, b=Burst, c=CPU, s=Goodness, all=all")
     parser.add_argument("--cpu-graph-slice", type=int, default=500,
                         help="Slice size for CPU usage plot (in ms)")
+    parser.add_argument("--burst-graph-slice", type=int, default=3000,
+                    help="Interval size for expected burst plot aggregation (in ms)")
     args = parser.parse_args()
 
     hide_flags = args.hide or ""
@@ -259,7 +275,7 @@ def main():
         show_spawn = False,
         show_sleep = False,
         show_wake  = False,
-        xrotation=90
+        xrotation=0
     )
 
     figs['c'] = plot_cpu_usage(
@@ -293,8 +309,10 @@ def main():
         os.path.join(outdir, f"{base}-expected_burst.png"),
         toggle_figs=False,
         xrotation=0,
+        linestyle='-',
         show_legend=True,
-        force_unique_colors=True
+        force_unique_colors=True,
+        interval = args.burst_graph_slice
     )
 
     for key, fig in figs.items():
