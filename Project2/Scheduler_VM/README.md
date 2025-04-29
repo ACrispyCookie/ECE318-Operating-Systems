@@ -55,6 +55,11 @@ venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
+On Linux systems you may need to install the following package:
+```bash
+sudo apt-get install python3-tk
+```
+
 Finally, you can run the run.sh script:
 
 ```bash
