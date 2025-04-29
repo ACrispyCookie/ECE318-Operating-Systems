@@ -55,17 +55,7 @@ $(LIB_NAME): $(LIB_SRCS) $(INC_FILES)
 	$(CC) -c $(CFLAGS) $(LIB_SRCS)
 	ar rcsv lib$(LIB_NAME).a $(LIB_OBJS)
 
-no-goodness:
-	$(MAKE) GOODNESS_FLAG=-DENABLE_GOODNESS_ALGORITHM=0 NICE_FLAG=$(NICE_FLAG)
-
-nice:
-	$(MAKE) NICE_FLAG=-DNICE_VALUE=1 GOODNESS_FLAG=$(GOODNESS_FLAG)
-
-custom:
-	$(MAKE) GOODNESS_FLAG=$(GOODNESS_FLAG) NICE_FLAG=$(NICE_FLAG) TIMESLICE=$(TIMESLICE)
-
-.PHONY: clean no-goodness nice custom
-
+.PHONY: clean
 
 clean:
 	rm -v $(EXEC_NAME) lib$(LIB_NAME).a *.o

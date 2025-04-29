@@ -109,13 +109,11 @@ if [ "$NICE" = true ]; then
     NICE_FLAG="-DNICE_VALUE=1"
 fi
 
-MAKE_TARGET="custom"
-
 echo ""
 echo "################# Start compilation process #################"
 echo ""
 
-make -C src "$MAKE_TARGET" TIMESLICE="$TIMESLICE" GOODNESS_FLAG="$GOODNESS_FLAG" NICE_FLAG="$NICE_FLAG"
+make -C src TIMESLICE="$TIMESLICE" GOODNESS_FLAG="$GOODNESS_FLAG" NICE_FLAG="$NICE_FLAG"
 if [ $? -ne 0 ]; then
     echo "Make command failed."
     exit 1
