@@ -1,0 +1,32 @@
+# autotools generated files
+Makefile.in
+aclocal.m4
+configure
+config.guess
+config.sub
+config.status
+config.log
+config.h.in
+config.h
+stamp-h1
+autom4te.cache/
+
+# make build output
+Makefile
+html/Makefile
+src/Makefile
+*.o
+*.log
+src/.deps/
+src/am--include-marker
+src/#*
+
+# editor backup files
+*~
+.#*
+#*
+*.swp
+
+# runtime output
+bbfs
+rootdir/
