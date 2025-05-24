@@ -12,7 +12,7 @@ stamp-h1
 autom4te.cache/
 
 # make build output
-Makefile
+/Makefile
 html/Makefile
 src/Makefile
 *.o
@@ -29,4 +29,5 @@ src/#*
 
 # runtime output
 bbfs
-rootdir/
+mountdir
+rootdir

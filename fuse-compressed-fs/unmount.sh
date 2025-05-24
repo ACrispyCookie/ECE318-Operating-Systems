@@ -1,0 +1,1 @@
+fusermount -u ./example/mountdir
