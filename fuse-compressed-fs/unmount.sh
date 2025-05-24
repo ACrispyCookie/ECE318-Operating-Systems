@@ -1,1 +1,3 @@
-fusermount -u ./example/mountdir
+cd example
+fusermount -u ./mountdir
+cd ..

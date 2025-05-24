@@ -366,7 +366,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
     log_fi(fi);
 
 
-    // return log_syscall("pwrite", pwrite(fi->fh, buf, size, offset), 0);
+    return log_syscall("pwrite", pwrite(fi->fh, buf, size, offset), 0);
 }
 
 /** Get file system statistics
