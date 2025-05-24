@@ -1,1 +1,3 @@
-./src/bbfs ./example/rootdir ./example/mountdir
+cd example
+../src/bbfs ./rootdir ./mountdir
+cd ..
