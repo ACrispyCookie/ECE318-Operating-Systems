@@ -43,8 +43,17 @@
 
 #include "log.h"
 
+#define BLOCK_SIZE 4096
+#define BLOCK_NUMBER_SIZE 4
+#define HASH_SIZE 20
+#define METADATA_SIZE 2
+
+#define USER_PATH "/user"
+#define CEIL_TO_MULT(x, n)  (((x) + (n - 1)) & ~(n - 1))
+#define MIN(x, y) x > y ? y : x
+
 /* File descriptor for the blocks repository */
-int repo_fd;
+int blocks_fd, hashes_fd;
 
 //  All the paths I see are relative to the root of the mounted
 //  filesystem.  In order to get to the underlying filesystem, I need to
@@ -54,6 +63,7 @@ int repo_fd;
 static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 {
     strcpy(fpath, BB_DATA->rootdir);
+    strcat(fpath, USER_PATH);
     strncat(fpath, path, PATH_MAX); // ridiculously long paths will
 				    // break here
 
@@ -74,7 +84,7 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
  */
 int bb_getattr(const char *path, struct stat *statbuf)
 {
-    int retstat;
+    int retstat, fd;
     char fpath[PATH_MAX];
     
     log_msg("\nbb_getattr(path=\"%s\", statbuf=0x%08x)\n",
@@ -84,7 +94,19 @@ int bb_getattr(const char *path, struct stat *statbuf)
     retstat = log_syscall("lstat", lstat(fpath, statbuf), 0);
     
     log_stat(statbuf);
-    
+
+    // If it is a regular file
+    if (S_ISREG(statbuf->st_mode)) {
+        retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);
+        
+        short int last_block_size;
+        retstat = log_syscall("read", read(fd, &last_block_size, sizeof(short int)), 0);
+        int total_size = ((statbuf->st_size - METADATA_SIZE) / BLOCK_NUMBER_SIZE - 1) * BLOCK_SIZE + last_block_size;
+        statbuf->st_size = total_size;
+        
+        retstat = log_syscall("close", close(fd), 0);
+    }
+
     return retstat;
 }
 
@@ -111,9 +133,9 @@ int bb_readlink(const char *path, char *link, size_t size)
 
     retstat = log_syscall("readlink", readlink(fpath, link, size - 1), 0);
     if (retstat >= 0) {
-	link[retstat] = '\0';
-	retstat = 0;
-	log_msg("    link=\"%s\"\n", link);
+        link[retstat] = '\0';
+        retstat = 0;
+        log_msg("    link=\"%s\"\n", link);
     }
     
     return retstat;
@@ -127,8 +149,9 @@ int bb_readlink(const char *path, char *link, size_t size)
 // shouldn't that comment be "if" there is no.... ?
 int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
-    int retstat;
+    int retstat, fd;
     char fpath[PATH_MAX];
+    int size = 0;
     
     log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n",
 	  path, mode, dev);
@@ -139,16 +162,16 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
     // mknod man page stating the only portable use of mknod() is to
     // make a fifo, but saying it should never actually be used for
     // that.
-    if (S_ISREG(mode)) {
-	retstat = log_syscall("open", open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
-	if (retstat >= 0)
-	    retstat = log_syscall("close", close(retstat), 0);
-    } else
-	if (S_ISFIFO(mode))
+    if (S_ISFIFO(mode))
 	    retstat = log_syscall("mkfifo", mkfifo(fpath, mode), 0);
-	else
+	else if (!S_ISREG(mode))
 	    retstat = log_syscall("mknod", mknod(fpath, mode, dev), 0);
-    
+
+    // Write metadata
+    retstat = log_syscall("open", fd = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
+    retstat = log_syscall("write", write(fd, &size, sizeof(int)), 0);
+    retstat = log_syscall("close", close(fd), 0);
+
     return retstat;
 }
 
@@ -172,6 +195,9 @@ int bb_unlink(const char *path)
     log_msg("bb_unlink(path=\"%s\")\n",
 	    path);
     bb_fullpath(fpath, path);
+
+    //Remove used blocks from repo
+    //if not used by any other file
 
     return log_syscall("unlink", unlink(fpath), 0);
 }
@@ -327,21 +353,46 @@ int bb_open(const char *path, struct fuse_file_info *fi)
  *
  * Changed in version 2.2
  */
-// I don't fully understand the documentation above -- it doesn't
-// match the documentation for the read() system call which says it
-// can return with anything up to the amount of data requested. nor
-// with the fusexmp code which returns the amount of data also
-// returned by read.
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
-{
-    int retstat = 0;
-    
+{   
     log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
     // no need to get fpath on this one, since I work from fi->fh not the path
     log_fi(fi);
 
-    return log_syscall("pread", pread(fi->fh, buf, size, offset), 0);
+    // Find first block index and total blocks to be read.
+    int block_index = (offset / BLOCK_SIZE) * BLOCK_NUMBER_SIZE;
+    int blocks_count = CEIL_TO_MULT(offset % BLOCK_SIZE + size, BLOCK_SIZE) / BLOCK_SIZE;
+    char *write_buf = buf; // Copy of buf to use in for loop
+
+    // Read the first block ID 
+    int block_id_offset = METADATA_SIZE + block_index * BLOCK_NUMBER_SIZE;
+    int block_id;
+    pread(fi->fh, &block_id, sizeof(int), block_id_offset);
+    
+    // Read the contents of the first block
+    int first_offset = offset % BLOCK_SIZE;
+    int block_offset = block_id * (BLOCK_NUMBER_SIZE + BLOCK_SIZE) + BLOCK_NUMBER_SIZE;
+    int read_amount = MIN(BLOCK_SIZE - first_offset, size);
+    pread(blocks_fd, write_buf, read_amount, block_offset);
+    write_buf += read_amount;
+    size -= read_amount;
+    
+    // Iterate over the remaining blocks starting from block 1.
+    for (int i = 1; i < blocks_count; i++) {
+        // Read the block ID
+        block_id_offset += BLOCK_NUMBER_SIZE;
+        pread(fi->fh, &block_id, sizeof(int), block_id_offset);
+        
+        // Read the contents of the block
+        int block_offset = block_id * (BLOCK_NUMBER_SIZE + BLOCK_SIZE) + BLOCK_NUMBER_SIZE;
+        int read_amount = MIN(BLOCK_SIZE, size);
+        pread(blocks_fd, write_buf, read_amount, block_offset);
+        write_buf += read_amount;
+        size -= read_amount;
+    }
+
+    return write_buf - buf;
 }
 
 /** Write data to an open file
@@ -352,8 +403,6 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
  *
  * Changed in version 2.2
  */
-// As  with read(), the documentation above is inconsistent with the
-// documentation for the write() system call.
 int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 	     struct fuse_file_info *fi)
 {
@@ -620,8 +669,8 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
     de = readdir(dp);
     log_msg("    readdir returned 0x%p\n", de);
     if (de == 0) {
-	retstat = log_error("bb_readdir readdir");
-	return retstat;
+        retstat = log_error("bb_readdir readdir");
+        return retstat;
     }
 
     // This will copy the entire directory into the buffer.  The loop exits
@@ -629,11 +678,11 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
     // returns something non-zero.  The first case just means I've
     // read the whole directory; the second means the buffer is full.
     do {
-	log_msg("calling filler with name %s\n", de->d_name);
-	if (filler(buf, de->d_name, NULL, 0) != 0) {
-	    log_msg("    ERROR bb_readdir filler:  buffer full");
-	    return -ENOMEM;
-	}
+        log_msg("calling filler with name %s\n", de->d_name);
+        if (filler(buf, de->d_name, NULL, 0) != 0) {
+            log_msg("    ERROR bb_readdir filler:  buffer full");
+            return -ENOMEM;
+        }
     } while ((de = readdir(dp)) != NULL);
     
     log_fi(fi);
@@ -877,6 +926,7 @@ int main(int argc, char *argv[])
     int fuse_stat;
     struct bb_state *bb_data;
     char blocks_repo_path[PATH_MAX];
+    char hashes_path[PATH_MAX];
 
     // bbfs doesn't do any access checking on its own (the comment
     // blocks in fuse.h mention some of the functions that need
@@ -919,7 +969,9 @@ int main(int argc, char *argv[])
     bb_data->logfile = log_open();
 
     sprintf(blocks_repo_path, "%s/blocks_repo", bb_data->rootdir);
-    repo_fd = open(blocks_repo_path, O_CREAT | O_RDWR, 664);
+    blocks_fd = open(blocks_repo_path, O_CREAT | O_RDWR, 664);
+    sprintf(hashes_path, "%s/hashes", bb_data->rootdir);
+    hashes_fd = open(hashes_path, O_CREAT | O_RDWR, 664);
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
