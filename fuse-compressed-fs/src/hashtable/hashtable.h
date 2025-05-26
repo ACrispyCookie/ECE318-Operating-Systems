@@ -14,6 +14,8 @@ element_t *table_find(unsigned char hash[SHA_DIGEST_LENGTH]);
 
 int table_remove(unsigned char hash[SHA_DIGEST_LENGTH]);
 
+void table_clear_foreach(void (*func)(element_t *));
+
 void table_clear();
 
 void table_print();
