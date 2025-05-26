@@ -23,6 +23,7 @@
 */
 #include "config.h"
 #include "params.h"
+#include "hashtable/hashtable.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -44,16 +45,47 @@
 #include "log.h"
 
 #define BLOCK_SIZE 4096
-#define BLOCK_NUMBER_SIZE 4
 #define HASH_SIZE 20
-#define METADATA_SIZE 2
+
+#define VIRTFILE_METADATA_SIZE 2
+#define VIRTFILE_PTR_SIZE HASH_SIZE
+
+#define METADATA_REF_COUNT_SIZE 4
+#define METADATA_OFFSET_SIZE 4
+#define METADATA_FILE_ENTRY_SIZE (HASH_SIZE + METADATA_REF_COUNT_SIZE + METADATA_OFFSET_SIZE)
 
 #define USER_PATH "/user"
 #define CEIL_TO_MULT(x, n)  (((x) + (n - 1)) & ~(n - 1))
 #define MIN(x, y) x > y ? y : x
 
 /* File descriptor for the blocks repository */
-int blocks_fd, hashes_fd;
+int blocks_fd, metadata_fd;
+
+void sha1_print(unsigned char hash[SHA_DIGEST_LENGTH]) {
+    log_msg("SHA1 hash: ");
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+        log_msg("%02x", hash[i]);
+    }
+    log_msg("\n");
+}
+
+void load_metadata() 
+{
+    char hash[SHA_DIGEST_LENGTH];
+    unsigned int ref_count;
+    unsigned int offset;
+
+    while(1) {
+        int read_res = read(metadata_fd, hash, HASH_SIZE);
+        if (read_res == 0)
+            return;
+        read(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE);
+        read(metadata_fd, &offset, METADATA_OFFSET_SIZE);
+
+        sha1_print(hash);
+        table_add(hash, ref_count, offset);
+    }
+}
 
 //  All the paths I see are relative to the root of the mounted
 //  filesystem.  In order to get to the underlying filesystem, I need to
@@ -101,7 +133,7 @@ int bb_getattr(const char *path, struct stat *statbuf)
         
         short int last_block_size;
         retstat = log_syscall("read", read(fd, &last_block_size, sizeof(short int)), 0);
-        int total_size = ((statbuf->st_size - METADATA_SIZE) / BLOCK_NUMBER_SIZE - 1) * BLOCK_SIZE + last_block_size;
+        int total_size = ((statbuf->st_size - VIRTFILE_METADATA_SIZE) / VIRTFILE_PTR_SIZE - 1) * BLOCK_SIZE + last_block_size;
         statbuf->st_size = total_size;
         
         retstat = log_syscall("close", close(fd), 0);
@@ -361,18 +393,22 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     log_fi(fi);
 
     // Find first block index and total blocks to be read.
-    int block_index = (offset / BLOCK_SIZE) * BLOCK_NUMBER_SIZE;
+    int block_index = (offset / BLOCK_SIZE) * VIRTFILE_PTR_SIZE;
     int blocks_count = CEIL_TO_MULT(offset % BLOCK_SIZE + size, BLOCK_SIZE) / BLOCK_SIZE;
     char *write_buf = buf; // Copy of buf to use in for loop
+    log_msg("First block index: %d Count: %d\n", block_index, blocks_count);
 
-    // Read the first block ID 
-    int block_id_offset = METADATA_SIZE + block_index * BLOCK_NUMBER_SIZE;
-    int block_id;
-    pread(fi->fh, &block_id, sizeof(int), block_id_offset);
+    // Read the first block hash 
+    int block_hash_offset = VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE;
+    unsigned char block_hash[SHA_DIGEST_LENGTH];
+    pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset);
+    log_msg("Block hash offset: %d ", block_hash_offset);
+    sha1_print(block_hash);
+
     
     // Read the contents of the first block
     int first_offset = offset % BLOCK_SIZE;
-    int block_offset = block_id * (BLOCK_NUMBER_SIZE + BLOCK_SIZE) + BLOCK_NUMBER_SIZE;
+    int block_offset = table_find(block_hash)->offset * BLOCK_SIZE;
     int read_amount = MIN(BLOCK_SIZE - first_offset, size);
     pread(blocks_fd, write_buf, read_amount, block_offset);
     write_buf += read_amount;
@@ -381,11 +417,11 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     // Iterate over the remaining blocks starting from block 1.
     for (int i = 1; i < blocks_count; i++) {
         // Read the block ID
-        block_id_offset += BLOCK_NUMBER_SIZE;
-        pread(fi->fh, &block_id, sizeof(int), block_id_offset);
+        block_hash_offset += VIRTFILE_PTR_SIZE;
+        pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset);
         
         // Read the contents of the block
-        int block_offset = block_id * (BLOCK_NUMBER_SIZE + BLOCK_SIZE) + BLOCK_NUMBER_SIZE;
+        int block_offset = table_find(block_hash)->offset * BLOCK_SIZE;
         int read_amount = MIN(BLOCK_SIZE, size);
         pread(blocks_fd, write_buf, read_amount, block_offset);
         write_buf += read_amount;
@@ -405,14 +441,13 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
  */
 int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 	     struct fuse_file_info *fi)
-{
-    int retstat = 0;
-    
+{   
     log_msg("\nbb_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi
 	    );
     // no need to get fpath on this one, since I work from fi->fh not the path
     log_fi(fi);
+
 
 
     return log_syscall("pwrite", pwrite(fi->fh, buf, size, offset), 0);
@@ -750,6 +785,14 @@ void *bb_init(struct fuse_conn_info *conn)
     
     log_conn(conn);
     log_fuse_context(fuse_get_context());
+
+    char blocks_path[PATH_MAX];
+    char metadata_path[PATH_MAX];
+    sprintf(blocks_path, "%s/blocks", BB_DATA->rootdir);
+    blocks_fd = open(blocks_path, O_CREAT | O_RDWR, 664);
+    sprintf(metadata_path, "%s/metadata", BB_DATA->rootdir);
+    metadata_fd = open(metadata_path, O_CREAT | O_RDWR, 664);
+    load_metadata();
     
     return BB_DATA;
 }
@@ -925,8 +968,6 @@ int main(int argc, char *argv[])
 {
     int fuse_stat;
     struct bb_state *bb_data;
-    char blocks_repo_path[PATH_MAX];
-    char hashes_path[PATH_MAX];
 
     // bbfs doesn't do any access checking on its own (the comment
     // blocks in fuse.h mention some of the functions that need
@@ -967,11 +1008,6 @@ int main(int argc, char *argv[])
     argc--;
     
     bb_data->logfile = log_open();
-
-    sprintf(blocks_repo_path, "%s/blocks_repo", bb_data->rootdir);
-    blocks_fd = open(blocks_repo_path, O_CREAT | O_RDWR, 664);
-    sprintf(hashes_path, "%s/hashes", bb_data->rootdir);
-    hashes_fd = open(hashes_path, O_CREAT | O_RDWR, 664);
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
