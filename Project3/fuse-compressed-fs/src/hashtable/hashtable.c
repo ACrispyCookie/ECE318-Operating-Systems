@@ -37,13 +37,18 @@ int table_remove(unsigned char hash[SHA_DIGEST_LENGTH]) {
 	return 0;
 }
 
-void table_clear() {
+void table_clear_foreach(void (*func)(element_t *)) {
 	element_t *curr, *tmp;
 
 	HASH_ITER(hh, table, curr, tmp) {
+		if (func != NULL) func(curr);
 		HASH_DEL(table, curr);  /* delete; users advances to next */
 		free(curr);             /* optional- if you want to free  */
 	}
+}
+
+void table_clear() {
+	table_clear_foreach(NULL);
 }
 
 void table_print() {

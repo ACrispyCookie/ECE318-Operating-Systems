@@ -24,6 +24,7 @@
 #include "config.h"
 #include "params.h"
 #include "hashtable/hashtable.h"
+#include "list/list.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -54,21 +55,19 @@
 #define METADATA_OFFSET_SIZE 4
 #define METADATA_FILE_ENTRY_SIZE (HASH_SIZE + METADATA_REF_COUNT_SIZE + METADATA_OFFSET_SIZE)
 
-#define USER_PATH "/user"
+#define BLOCKS_PATH "/blocks"
+#define FREE_BLOCKS_PATH "/free_blocks"
+#define METADATA_PATH "/metadata"
+#define USER_PATH "/user/"
 // Ceil x to multiple of n
 #define CEIL_TO_MULT(x, n)  (((x) + (n - 1)) & ~(n - 1))
 #define MIN(x, y) x > y ? y : x
 
 /* File descriptor for the blocks repository */
-int blocks_fd, metadata_fd;
+int blocks_fd, free_blocks_fd, metadata_fd;
 
-void sha1_print(unsigned char hash[SHA_DIGEST_LENGTH]) {
-    log_msg("SHA1 hash: ");
-    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
-        log_msg("%02x", hash[i]);
-    }
-    log_msg("\n");
-}
+// List of free blocks
+list_t *free_blocks;
 
 void load_metadata() 
 {
@@ -80,11 +79,61 @@ void load_metadata()
         int read_res = read(metadata_fd, hash, HASH_SIZE);
         if (read_res == 0)
             return;
-        read(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE);
-        read(metadata_fd, &offset, METADATA_OFFSET_SIZE);
+        log_syscall("read", read(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE), 0);
+        log_syscall("read", read(metadata_fd, &offset, METADATA_OFFSET_SIZE), 0);
 
         table_add(hash, ref_count, offset);
     }
+}
+
+void load_free_blocks() 
+{
+    unsigned int *offset = malloc(sizeof(unsigned int));
+    free_blocks = list_init();
+
+    while(1) {
+        int read_res = read(free_blocks_fd, offset, METADATA_OFFSET_SIZE);
+        if (read_res == 0)
+            return;
+        list_add(free_blocks, offset);
+    }
+}
+
+void save_metadata_element(element_t *element) {
+    char hash[SHA_DIGEST_LENGTH];
+    memcpy(element->hash, hash, SHA_DIGEST_LENGTH);
+    unsigned int ref_count = element->ref_count;
+    unsigned int offset = element->offset;
+
+    log_syscall("write", write(metadata_fd, hash, HASH_SIZE), 0);
+    log_syscall("write", write(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE), 0);
+    log_syscall("write", write(metadata_fd, &offset, METADATA_OFFSET_SIZE), 0);
+}
+
+void save_metadata() {
+    log_syscall("ftruncate", ftruncate(metadata_fd, 0), 0);
+    lseek(metadata_fd, 0, SEEK_SET);
+    table_clear_foreach(save_metadata_element);
+}
+
+void save_free_block(node_t *node) {
+    unsigned int *offset = (unsigned int *) node->data;
+    log_syscall("write", write(free_blocks_fd, offset, METADATA_OFFSET_SIZE), 0);
+    free(offset);
+}
+
+void save_free_blocks() {
+    log_syscall("ftruncate", ftruncate(free_blocks_fd, 0), 0);
+    lseek(free_blocks_fd, 0, SEEK_SET);
+    list_destroy_foreach(free_blocks, save_free_block);
+}
+
+void sha1_print(unsigned char hash[SHA_DIGEST_LENGTH]) {
+    log_msg("SHA1 hash: ");
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+        log_msg("%02x", hash[i]);
+    }
+    log_msg("\n");
 }
 
 //  All the paths I see are relative to the root of the mounted
@@ -405,13 +454,12 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 
     // Find the first block hash
     block_hash_offset = VIRTFILE_METADATA_SIZE + block_hash_position * VIRTFILE_PTR_SIZE;
-    pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset);
-    sha1_print(block_hash);
+    log_syscall("pread", pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
     
     // Read the contents of the first block
     block_offset = table_find(block_hash)->offset * BLOCK_SIZE + first_offset;
     read_amount = MIN(BLOCK_SIZE - first_offset, size);
-    pread(blocks_fd, write_buf, read_amount, block_offset);
+    log_syscall("pread", pread(blocks_fd, write_buf, read_amount, block_offset), 0);
     write_buf += read_amount;
     size -= read_amount;
     
@@ -419,12 +467,12 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     for (int i = 1; i < block_count; i++) {
         // Find the block's hash
         block_hash_offset += VIRTFILE_PTR_SIZE;
-        pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset);
+        log_syscall("pread", pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
         
         // Read the contents of the block
         block_offset = table_find(block_hash)->offset * BLOCK_SIZE;
         read_amount = MIN(BLOCK_SIZE, size);
-        pread(blocks_fd, write_buf, read_amount, block_offset);
+        log_syscall("pread", pread(blocks_fd, write_buf, read_amount, block_offset), 0);
         write_buf += read_amount;
         size -= read_amount;
     }
@@ -787,13 +835,26 @@ void *bb_init(struct fuse_conn_info *conn)
     log_conn(conn);
     log_fuse_context(fuse_get_context());
 
+    // Open blocks and metadata
     char blocks_path[PATH_MAX];
+    char free_blocks_path[PATH_MAX];
     char metadata_path[PATH_MAX];
-    sprintf(blocks_path, "%s/blocks", BB_DATA->rootdir);
+
+    strcpy(blocks_path, BB_DATA->rootdir);
+    strcat(blocks_path, BLOCKS_PATH);
     blocks_fd = open(blocks_path, O_CREAT | O_RDWR, 664);
-    sprintf(metadata_path, "%s/metadata", BB_DATA->rootdir);
+
+    strcpy(free_blocks_path, BB_DATA->rootdir);
+    strcat(free_blocks_path, FREE_BLOCKS_PATH);
+    free_blocks_fd = open(free_blocks_path, O_CREAT | O_RDWR, 664);
+
+    strcpy(metadata_path, BB_DATA->rootdir);
+    strcat(metadata_path, METADATA_PATH);
     metadata_fd = open(metadata_path, O_CREAT | O_RDWR, 664);
+
+    // Load metadata and free blocks to memory
     load_metadata();
+    load_free_blocks();
     
     return BB_DATA;
 }
@@ -807,6 +868,13 @@ void *bb_init(struct fuse_conn_info *conn)
  */
 void bb_destroy(void *userdata)
 {
+    // Save metadata and free blocks and close files
+    save_metadata();
+    save_free_blocks();
+    close(blocks_fd);
+    close(metadata_fd);
+    close(free_blocks_fd);
+
     log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
 }
 
