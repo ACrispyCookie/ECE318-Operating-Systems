@@ -55,6 +55,7 @@
 #define METADATA_FILE_ENTRY_SIZE (HASH_SIZE + METADATA_REF_COUNT_SIZE + METADATA_OFFSET_SIZE)
 
 #define USER_PATH "/user"
+// Ceil x to multiple of n
 #define CEIL_TO_MULT(x, n)  (((x) + (n - 1)) & ~(n - 1))
 #define MIN(x, y) x > y ? y : x
 
@@ -386,39 +387,43 @@ int bb_open(const char *path, struct fuse_file_info *fi)
  */
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {   
+    unsigned int block_count; // Total blocks to read
+    unsigned int first_offset; // Offset in the first block
+    unsigned int block_hash_position, block_hash_offset; // Position and offset (in bytes) of the block hash inside the virtual file
+    unsigned int block_offset, read_amount; // The offset (in bytes) of the block inside the 'blocks' file and the amount of the block to read (in bytes)
+    unsigned char block_hash[SHA_DIGEST_LENGTH]; // The hash of the block to read
+    char *write_buf = buf; // Copy of buf to use on loops
+
     log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
     // no need to get fpath on this one, since I work from fi->fh not the path
     log_fi(fi);
 
-    // Find first block index and total blocks to be read.
-    int block_index = (offset / BLOCK_SIZE) * VIRTFILE_PTR_SIZE;
-    int blocks_count = CEIL_TO_MULT(offset % BLOCK_SIZE + size, BLOCK_SIZE) / BLOCK_SIZE;
-    char *write_buf = buf; // Copy of buf to use in for loop
+    first_offset = offset % BLOCK_SIZE;
+    block_hash_position = offset / BLOCK_SIZE;
+    block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;
 
-    // Read the first block hash 
-    int block_hash_offset = VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE;
-    unsigned char block_hash[SHA_DIGEST_LENGTH];
+    // Find the first block hash
+    block_hash_offset = VIRTFILE_METADATA_SIZE + block_hash_position * VIRTFILE_PTR_SIZE;
     pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset);
-
+    sha1_print(block_hash);
     
     // Read the contents of the first block
-    int first_offset = offset % BLOCK_SIZE;
-    int block_offset = table_find(block_hash)->offset * BLOCK_SIZE;
-    int read_amount = MIN(BLOCK_SIZE - first_offset, size);
+    block_offset = table_find(block_hash)->offset * BLOCK_SIZE + first_offset;
+    read_amount = MIN(BLOCK_SIZE - first_offset, size);
     pread(blocks_fd, write_buf, read_amount, block_offset);
     write_buf += read_amount;
     size -= read_amount;
     
     // Iterate over the remaining blocks starting from block 1.
-    for (int i = 1; i < blocks_count; i++) {
-        // Read the block ID
+    for (int i = 1; i < block_count; i++) {
+        // Find the block's hash
         block_hash_offset += VIRTFILE_PTR_SIZE;
         pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset);
         
         // Read the contents of the block
-        int block_offset = table_find(block_hash)->offset * BLOCK_SIZE;
-        int read_amount = MIN(BLOCK_SIZE, size);
+        block_offset = table_find(block_hash)->offset * BLOCK_SIZE;
+        read_amount = MIN(BLOCK_SIZE, size);
         pread(blocks_fd, write_buf, read_amount, block_offset);
         write_buf += read_amount;
         size -= read_amount;
