@@ -82,7 +82,6 @@ void load_metadata()
         read(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE);
         read(metadata_fd, &offset, METADATA_OFFSET_SIZE);
 
-        sha1_print(hash);
         table_add(hash, ref_count, offset);
     }
 }
@@ -396,14 +395,11 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     int block_index = (offset / BLOCK_SIZE) * VIRTFILE_PTR_SIZE;
     int blocks_count = CEIL_TO_MULT(offset % BLOCK_SIZE + size, BLOCK_SIZE) / BLOCK_SIZE;
     char *write_buf = buf; // Copy of buf to use in for loop
-    log_msg("First block index: %d Count: %d\n", block_index, blocks_count);
 
     // Read the first block hash 
     int block_hash_offset = VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE;
     unsigned char block_hash[SHA_DIGEST_LENGTH];
     pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset);
-    log_msg("Block hash offset: %d ", block_hash_offset);
-    sha1_print(block_hash);
 
     
     // Read the contents of the first block
