@@ -1,3 +1,6 @@
+#ifndef HASHTABLE_H
+#define HASHTABLE_H
+
 #include "uthash.h"
 #include <openssl/sha.h>
 
@@ -19,3 +22,5 @@ void table_clear_foreach(void (*func)(element_t *));
 void table_clear();
 
 void table_print();
+
+#endif

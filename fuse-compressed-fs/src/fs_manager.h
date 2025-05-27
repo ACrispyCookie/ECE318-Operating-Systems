@@ -1,3 +1,6 @@
+#ifndef FS_MANAGER_H
+#define FS_MANAGER_H
+
 #include <openssl/sha.h>
 #include "list/list.h"
 #include "hashtable/hashtable.h"
@@ -35,10 +38,10 @@
 #define MAX(x, y) x > y ? x : y
 
 /* File descriptor for the blocks repository */
-int blocks_fd, free_blocks_fd, metadata_fd;
+extern int blocks_fd, free_blocks_fd, metadata_fd;
 
 /* List of free blocks */
-list_t *free_blocks;
+extern list_t *free_blocks;
 
 /* 
     Creates a block and stores it in the block 
@@ -108,13 +111,31 @@ ssize_t get_total_size(int fd);
 ssize_t get_block_size(int fd);
 
 /*
-    Read block_count full blocks from a file into a buffer.
+    Read block_count full blocks from a file into a buffer starting at block start_index.
+
+    Parameters:
+    start_index - The position of the starting block inside the virtual file.
+    block_count - The number of blocks to read.
     
     Returns:
-    the total written bytes - on success 
+    the total read bytes - on success 
     ERROR - on error
 */
-ssize_t read_file_blocks(int fd, unsigned int start_index, char *buf, int block_count);
+ssize_t read_file_blocks(int fd, char *buf, unsigned int start_index, int block_count);
+
+/*
+    Read byte_count bytes from a file at a given block and offset.
+
+    Parameters:
+    block_index - The position of the block inside the virtual file.
+    offset - The offset inside the block to start reading from. Range: [0, 4095]
+    byte_count - The amount of bytes to read from the block. Range: [0, 4096]
+    
+    Returns:
+    the total read bytes - on success 
+    ERROR - on error
+*/
+ssize_t read_file_block(int fd, char *buf, unsigned int block_index, unsigned int offset, short int byte_count);
 
 /*
     Adds block_count number of blocks that contain zero, starting at
@@ -136,3 +157,5 @@ ssize_t zeropad_file(int fd, unsigned int start_offset, int block_count);
     ERROR - on error
 */
 int truncate_file(int fd, unsigned int new_size);
+
+#endif

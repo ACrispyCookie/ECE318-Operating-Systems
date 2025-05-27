@@ -1,3 +1,6 @@
+#ifndef LIST_H
+#define LIST_H
+
 #define LIST_SUCCESS 1
 #define LIST_ALREADY 0 
 #define LIST_ERROR -1
@@ -92,3 +95,5 @@ void list_destroy(list_t *list);
     any related memory running the given function for each node.
 */
 void list_destroy_foreach(list_t *list, void (*func)(node_t *));
+
+#endif
