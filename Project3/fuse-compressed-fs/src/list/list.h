@@ -18,6 +18,7 @@ typedef struct node {
     Struct describing a circular list 
 */
 typedef struct list {
+    int (*comparator)(void *, void *);
     unsigned int size;
     node_t *head; 
 } list_t;
@@ -26,7 +27,7 @@ typedef struct list {
     Initializes a coroutine list and
     returns a list_t describing the list.
 */
-list_t *list_init();
+list_t *list_init(int (*comparator)(void *, void *));
 
 /*
     Adds the given struct to the end of the list.
@@ -77,6 +78,7 @@ void *list_remove_index(list_t *list, unsigned int index);
     void *data - The data to find.
     node_t **previous - Optional parameter to store the previous node of 
                         the one we are looking for.
+    int (*comparator)(void *, void *) - Function pointer for comparing 2 data object.
 
     Returns:
     a pointer to the node of the list containing the given data or

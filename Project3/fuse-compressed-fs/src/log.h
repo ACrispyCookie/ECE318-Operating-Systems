@@ -8,6 +8,10 @@
 #ifndef _LOG_H_
 #define _LOG_H_
 #include <stdio.h>
+#include <sys/stat.h>
+#include <sys/statvfs.h>
+#include <utime.h>
+#include <fuse.h>
 
 //  macro to log fields in structs.
 #define log_struct(st, field, format, typecast) \

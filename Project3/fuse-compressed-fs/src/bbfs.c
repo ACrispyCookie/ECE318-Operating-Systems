@@ -47,120 +47,6 @@
 
 #include "log.h"
 
-// char *create_block(char *buf, char new_hash[SHA_DIGEST_LENGTH]) 
-// {
-//     unsigned int new_block_offset;
-
-//     // Free block exists, remove it from list
-//     if (free_blocks->head->next != NULL) {
-//         new_block_offset = (*((unsigned int *) free_blocks->head->next->data)) * BLOCK_SIZE;
-//         list_remove_index(free_blocks, 0);
-//     } else {
-//         // No free block, get new offset at the end of file
-//         struct stat statbuf;
-//         fstat(blocks_fd, &statbuf);
-//         new_block_offset = statbuf.st_size;
-//     }
-
-//     // Add the hash of the new block in the hashtable
-//     log_syscall("pwrite", pwrite(blocks_fd, buf, BLOCK_SIZE, new_block_offset), 0);
-//     element_t *element = table_add(new_hash, 1, new_block_offset);
-
-//     return element->hash;
-// }
-
-// void remove_block(char hash[SHA_DIGEST_LENGTH]) 
-// {
-//     element_t *element = table_find(hash);
-//     unsigned int *block_offset = malloc(sizeof(unsigned int *));
-//     *block_offset = element->offset;
-    
-//     table_remove(hash);
-//     list_add(free_blocks, block_offset);
-// }
-
-// int find_or_create_block(char *buf, char hash[SHA_DIGEST_LENGTH]) 
-// {
-//     SHA1(buf, BLOCK_SIZE, hash);
-
-//     element_t *element = table_find(hash);
-//     if (element == NULL) {
-//         create_block(buf, hash);
-//         return 0;
-//     }
-    
-//     element->ref_count++;
-
-//     return 1;
-// }
-
-void load_metadata() 
-{
-    char hash[SHA_DIGEST_LENGTH];
-    unsigned int ref_count;
-    unsigned int offset;
-
-    while(1) {
-        int read_res = log_syscall("read", read(metadata_fd, hash, HASH_SIZE), 0);
-        if (read_res <= 0)
-            return;
-        log_syscall("read", read(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE), 0);
-        log_syscall("read", read(metadata_fd, &offset, METADATA_OFFSET_SIZE), 0);
-
-        table_add(hash, ref_count, offset);
-    }
-}
-
-void load_free_blocks() 
-{
-    unsigned int *offset = malloc(sizeof(unsigned int));
-    free_blocks = list_init();
-
-    while(1) {
-        int read_res = log_syscall("read", read(free_blocks_fd, offset, METADATA_OFFSET_SIZE), 0);
-        if (read_res <= 0)
-            return;
-        list_add(free_blocks, offset);
-    }
-}
-
-void save_metadata_element(element_t *element) {
-    char hash[SHA_DIGEST_LENGTH];
-    memcpy(hash, element->hash, SHA_DIGEST_LENGTH);
-    unsigned int ref_count = element->ref_count;
-    unsigned int offset = element->offset;
-
-    log_syscall("write", write(metadata_fd, hash, HASH_SIZE), 0);
-    log_syscall("write", write(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE), 0);
-    log_syscall("write", write(metadata_fd, &offset, METADATA_OFFSET_SIZE), 0);
-}
-
-void save_metadata() {
-    log_syscall("ftruncate", ftruncate(metadata_fd, 0), 0);
-    lseek(metadata_fd, 0, SEEK_SET);
-    table_clear_foreach(save_metadata_element);
-}
-
-void save_free_block(node_t *node) {
-    unsigned int *offset = (unsigned int *) node->data;
-    log_syscall("write", write(free_blocks_fd, offset, METADATA_OFFSET_SIZE), 0);
-    free(offset);
-}
-
-void save_free_blocks() {
-    log_syscall("ftruncate", ftruncate(free_blocks_fd, 0), 0);
-    lseek(free_blocks_fd, 0, SEEK_SET);
-    list_destroy_foreach(free_blocks, save_free_block);
-}
-
-void sha1_print(unsigned char hash[SHA_DIGEST_LENGTH]) {
-    log_msg("SHA1 hash: ");
-    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
-        log_msg("%02x", hash[i]);
-    }
-    log_msg("\n");
-}
-
 //  All the paths I see are relative to the root of the mounted
 //  filesystem.  In order to get to the underlying filesystem, I need to
 //  have the mountpoint.  I'll save it away early on in main(), and then
@@ -458,64 +344,13 @@ int bb_open(const char *path, struct fuse_file_info *fi)
  *
  * Changed in version 2.2
  */
-// int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
-// {   
-//     unsigned int block_count; // Total blocks to read
-//     unsigned int first_offset; // Offset in the first block
-//     unsigned int block_hash_position, block_hash_offset; // Position and offset (in bytes) of the block hash inside the virtual file
-//     unsigned int block_offset, read_amount; // The offset (in bytes) of the block inside the 'blocks' file and the amount of the block to read (in bytes)
-//     unsigned char block_hash[SHA_DIGEST_LENGTH]; // The hash of the block to read
-//     char *read_buf = buf; // Copy of buf to use on loops
-
-//     log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
-// 	    path, buf, size, offset, fi);
-//     // no need to get fpath on this one, since I work from fi->fh not the path
-//     log_fi(fi);
-
-//     first_offset = offset % BLOCK_SIZE;
-//     block_hash_position = offset / BLOCK_SIZE;
-//     block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;
-
-//     // Find the first block hash
-//     block_hash_offset = VIRTFILE_METADATA_SIZE + block_hash_position * VIRTFILE_PTR_SIZE;
-//     log_syscall("pread", pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
-//     log_msg("First offset: %d, Hash pos %d, Block count %d, Hash offset %d\n", first_offset, block_hash_position, block_count, block_hash_offset);
-//     sha1_print(block_hash);
-    
-//     // Read the contents of the first block
-//     table_print(log_msg);
-//     block_offset = table_find(block_hash)->offset * BLOCK_SIZE + first_offset;
-//     read_amount = MIN(BLOCK_SIZE - first_offset, size);
-//     log_msg("Block_offset %d, Read amount %d\n", block_offset, read_amount);
-//     log_syscall("pread", pread(blocks_fd, read_buf, read_amount, block_offset), 0);
-//     read_buf += read_amount;
-//     size -= read_amount;
-
-//     log_msg(":)\n");
-    
-//     // Iterate over the remaining blocks starting from block 1.
-//     for (int i = 1; i < block_count; i++) {
-//         // Find the block's hash
-//         block_hash_offset += VIRTFILE_PTR_SIZE;
-//         log_syscall("pread", pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
-        
-//         // Read the contents of the block
-//         block_offset = table_find(block_hash)->offset * BLOCK_SIZE;
-//         read_amount = MIN(BLOCK_SIZE, size);
-//         log_syscall("pread", pread(blocks_fd, read_buf, read_amount, block_offset), 0);
-//         read_buf += read_amount;
-//         size -= read_amount;
-//     }
-
-//     return read_buf - buf;
-// }
-
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {   
     unsigned int block_count; // Total blocks to read
     unsigned int first_offset; // Offset in the first block
     unsigned int block_hash_position; // Position of the block hash inside the virtual file
-    unsigned int retstat, total_read; // Return status and total bytes read
+    unsigned int total_read = 0; // Return status and total bytes read
+    int retstat;
 
     log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
@@ -593,14 +428,14 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset, struc
     // Inside the existing file's data so fill the block_buffer with the last block's data
     if (total_new_bytes < 0) {
         log_syscall("pread", pread(fi->fh, hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
-        block_offset = table_find(hash)->offset * BLOCK_SIZE;
+        block_offset = table_find(metadata, hash)->offset * BLOCK_SIZE;
         log_syscall("pread", pread(blocks_fd, block_buffer, BLOCK_SIZE, block_offset), 0);
 
     // Outside the file's data, add padding
     } else {
         memset(block_buffer, 0, BLOCK_SIZE);
         find_or_create_block(block_buffer, hash);
-        table_find(hash)->ref_count += zero_blocks - 1;
+        table_find(metadata, hash)->ref_count += zero_blocks - 1;
         for (int i = 0; i < zero_blocks; i++, block_hash_offset += VIRTFILE_PTR_SIZE)
             log_syscall("pwrite", pwrite(fi->fh, hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
     }
@@ -626,7 +461,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset, struc
     // Handle final block
     if (offset + (write_buf - buf) < total_size) {
         log_syscall("pread", pread(fi->fh, hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
-        block_offset = table_find(hash)->offset * BLOCK_SIZE;
+        block_offset = table_find(metadata, hash)->offset * BLOCK_SIZE;
         log_syscall("pread", pread(blocks_fd, block_buffer, BLOCK_SIZE, block_offset), 0);
     } else {
         memset(block_buffer, 0, BLOCK_SIZE);

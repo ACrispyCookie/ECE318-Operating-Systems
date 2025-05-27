@@ -43,6 +43,29 @@ extern int blocks_fd, free_blocks_fd, metadata_fd;
 /* List of free blocks */
 extern list_t *free_blocks;
 
+/* Metadata hash table */
+extern hash_element_t *metadata;
+
+/*
+    Load the metadata hashtable from the metadata file.
+*/
+void load_metadata();
+
+/*
+    Load the free blocks list from the free blocks file.
+*/
+void load_free_blocks();
+
+/*
+    Saves the metadata hashtable to the metadata file and destroys it
+*/
+void save_metadata();
+
+/*
+    Saves the free block list in the free blocks files and clears it.
+*/
+void save_free_blocks();
+
 /* 
     Creates a block and stores it in the block 
     repository, generates the metadata for the block and adds it

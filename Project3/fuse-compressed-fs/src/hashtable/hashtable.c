@@ -1,12 +1,11 @@
 #include "hashtable.h"
+#include "log.h"
 #include <stdio.h>
 
-static element_t *table = NULL;
+hash_element_t *table_add(hash_element_t **table, unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset) {
+	hash_element_t *element;
 
-element_t *table_add(unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset) {
-	element_t *element;
-
-	HASH_FIND_PTR(table, hash, element);
+	HASH_FIND_PTR(*table, hash, element);
 	if (element != NULL)
 		return NULL;
 
@@ -14,19 +13,19 @@ element_t *table_add(unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_cou
     memcpy(element->hash, hash, SHA_DIGEST_LENGTH);
     element->ref_count = ref_count;
     element->offset = offset;
-	HASH_ADD_PTR(table, hash, element);
+	HASH_ADD_PTR(*table, hash, element);
 	return element;
 }
 
-element_t *table_find(unsigned char hash[SHA_DIGEST_LENGTH]) {
-    element_t *element;
+hash_element_t *table_find(hash_element_t *table, unsigned char hash[SHA_DIGEST_LENGTH]) {
+    hash_element_t *element;
     
 	HASH_FIND_PTR(table, hash, element);
     return element;
 }
 
-int table_remove(unsigned char hash[SHA_DIGEST_LENGTH]) {
-	element_t *element;
+int table_remove(hash_element_t *table, unsigned char hash[SHA_DIGEST_LENGTH]) {
+	hash_element_t *element;
 
 	HASH_FIND_PTR(table, hash, element);
 	if (element == NULL)
@@ -37,8 +36,8 @@ int table_remove(unsigned char hash[SHA_DIGEST_LENGTH]) {
 	return 0;
 }
 
-void table_clear_foreach(void (*func)(element_t *)) {
-	element_t *curr, *tmp;
+void table_clear_foreach(hash_element_t *table, void (*func)(hash_element_t *)) {
+	hash_element_t *curr, *tmp;
 
 	HASH_ITER(hh, table, curr, tmp) {
 		if (func != NULL) func(curr);
@@ -47,17 +46,17 @@ void table_clear_foreach(void (*func)(element_t *)) {
 	}
 }
 
-void table_clear() {
-	table_clear_foreach(NULL);
+void table_clear(hash_element_t *table) {
+	table_clear_foreach(table, NULL);
 }
 
-void table_print(int (*print_func)(const char *format, ...)) {
-    element_t *s;
+void table_print(hash_element_t *table, void (*print_func)(const char *format, ...)) {
+    hash_element_t *s;
 
     for (s = table; s != NULL; s = s->hh.next) {
 		print_func("hash ");
 		for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
 			print_func("%02x", s->hash[i]);
-		print_func(": off %u, ref_count %u\n", s->hash, s->offset, s->ref_count);
+		print_func(": off %u, ref_count %u\n", s->offset, s->ref_count);
     }
 }
