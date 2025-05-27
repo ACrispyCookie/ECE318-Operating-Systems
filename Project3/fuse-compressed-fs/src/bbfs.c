@@ -23,6 +23,7 @@
 */
 #include "config.h"
 #include "params.h"
+#include "fs_manager.h"
 #include "hashtable/hashtable.h"
 #include "list/list.h"
 
@@ -46,79 +47,52 @@
 
 #include "log.h"
 
-#define BLOCK_SIZE 4096
-#define HASH_SIZE 20
+// char *create_block(char *buf, char new_hash[SHA_DIGEST_LENGTH]) 
+// {
+//     unsigned int new_block_offset;
 
-#define VIRTFILE_METADATA_SIZE 2
-#define VIRTFILE_PTR_SIZE HASH_SIZE
+//     // Free block exists, remove it from list
+//     if (free_blocks->head->next != NULL) {
+//         new_block_offset = (*((unsigned int *) free_blocks->head->next->data)) * BLOCK_SIZE;
+//         list_remove_index(free_blocks, 0);
+//     } else {
+//         // No free block, get new offset at the end of file
+//         struct stat statbuf;
+//         fstat(blocks_fd, &statbuf);
+//         new_block_offset = statbuf.st_size;
+//     }
 
-#define METADATA_REF_COUNT_SIZE 4
-#define METADATA_OFFSET_SIZE 4
-#define METADATA_FILE_ENTRY_SIZE (HASH_SIZE + METADATA_REF_COUNT_SIZE + METADATA_OFFSET_SIZE)
+//     // Add the hash of the new block in the hashtable
+//     log_syscall("pwrite", pwrite(blocks_fd, buf, BLOCK_SIZE, new_block_offset), 0);
+//     element_t *element = table_add(new_hash, 1, new_block_offset);
 
-#define BLOCKS_PATH "/blocks"
-#define FREE_BLOCKS_PATH "/free_blocks"
-#define METADATA_PATH "/metadata"
-#define USER_PATH "/user"
-#define STORAGE_FILES_PERMISSIONS 0664
+//     return element->hash;
+// }
 
-// Ceil x to multiple of n
-#define CEIL_TO_MULT(x, n)  (((x) + (n - 1)) & ~(n - 1))
-#define MIN(x, y) x > y ? y : x
-#define MAX(x, y) x > y ? x : y
-
-/* File descriptor for the blocks repository */
-int blocks_fd, free_blocks_fd, metadata_fd;
-
-/* List of free blocks */
-list_t *free_blocks;
-
-char *create_block(char *buf, char new_hash[SHA_DIGEST_LENGTH]) 
-{
-    unsigned int new_block_offset;
-
-    // Free block exists, remove it from list
-    if (free_blocks->head->next != NULL) {
-        new_block_offset = (*((unsigned int *) free_blocks->head->next->data)) * BLOCK_SIZE;
-        list_remove_index(free_blocks, 0);
-    } else {
-        // No free block, get new offset at the end of file
-        struct stat statbuf;
-        fstat(blocks_fd, &statbuf);
-        new_block_offset = statbuf.st_size;
-    }
-
-    // Add the hash of the new block in the hashtable
-    log_syscall("pwrite", pwrite(blocks_fd, buf, BLOCK_SIZE, new_block_offset), 0);
-    element_t *element = table_add(new_hash, 1, new_block_offset);
-
-    return element->hash;
-}
-
-void remove_block(char hash[SHA_DIGEST_LENGTH]) 
-{
-    element_t *element = table_find(hash);
-    unsigned int *block_offset = malloc(sizeof(unsigned int *));
-    *block_offset = element->offset;
+// void remove_block(char hash[SHA_DIGEST_LENGTH]) 
+// {
+//     element_t *element = table_find(hash);
+//     unsigned int *block_offset = malloc(sizeof(unsigned int *));
+//     *block_offset = element->offset;
     
-    table_remove(hash);
-    list_add(free_blocks, block_offset);
-}
+//     table_remove(hash);
+//     list_add(free_blocks, block_offset);
+// }
 
-int find_or_create_block(char *buf, char hash[SHA_DIGEST_LENGTH]) 
-{
-    SHA1(buf, BLOCK_SIZE, hash);
+// int find_or_create_block(char *buf, char hash[SHA_DIGEST_LENGTH]) 
+// {
+//     SHA1(buf, BLOCK_SIZE, hash);
 
-    element_t *element = table_find(hash);
-    if (element == NULL) {
-        create_block(buf, hash);
-        return 0;
-    }
+//     element_t *element = table_find(hash);
+//     if (element == NULL) {
+//         create_block(buf, hash);
+//         return 0;
+//     }
     
-    element->ref_count++;
+//     element->ref_count++;
 
-    return 1;
-}
+//     return 1;
+// }
 
 void load_metadata() 
 {
@@ -484,14 +458,64 @@ int bb_open(const char *path, struct fuse_file_info *fi)
  *
  * Changed in version 2.2
  */
+// int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
+// {   
+//     unsigned int block_count; // Total blocks to read
+//     unsigned int first_offset; // Offset in the first block
+//     unsigned int block_hash_position, block_hash_offset; // Position and offset (in bytes) of the block hash inside the virtual file
+//     unsigned int block_offset, read_amount; // The offset (in bytes) of the block inside the 'blocks' file and the amount of the block to read (in bytes)
+//     unsigned char block_hash[SHA_DIGEST_LENGTH]; // The hash of the block to read
+//     char *read_buf = buf; // Copy of buf to use on loops
+
+//     log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
+// 	    path, buf, size, offset, fi);
+//     // no need to get fpath on this one, since I work from fi->fh not the path
+//     log_fi(fi);
+
+//     first_offset = offset % BLOCK_SIZE;
+//     block_hash_position = offset / BLOCK_SIZE;
+//     block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;
+
+//     // Find the first block hash
+//     block_hash_offset = VIRTFILE_METADATA_SIZE + block_hash_position * VIRTFILE_PTR_SIZE;
+//     log_syscall("pread", pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
+//     log_msg("First offset: %d, Hash pos %d, Block count %d, Hash offset %d\n", first_offset, block_hash_position, block_count, block_hash_offset);
+//     sha1_print(block_hash);
+    
+//     // Read the contents of the first block
+//     table_print(log_msg);
+//     block_offset = table_find(block_hash)->offset * BLOCK_SIZE + first_offset;
+//     read_amount = MIN(BLOCK_SIZE - first_offset, size);
+//     log_msg("Block_offset %d, Read amount %d\n", block_offset, read_amount);
+//     log_syscall("pread", pread(blocks_fd, read_buf, read_amount, block_offset), 0);
+//     read_buf += read_amount;
+//     size -= read_amount;
+
+//     log_msg(":)\n");
+    
+//     // Iterate over the remaining blocks starting from block 1.
+//     for (int i = 1; i < block_count; i++) {
+//         // Find the block's hash
+//         block_hash_offset += VIRTFILE_PTR_SIZE;
+//         log_syscall("pread", pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
+        
+//         // Read the contents of the block
+//         block_offset = table_find(block_hash)->offset * BLOCK_SIZE;
+//         read_amount = MIN(BLOCK_SIZE, size);
+//         log_syscall("pread", pread(blocks_fd, read_buf, read_amount, block_offset), 0);
+//         read_buf += read_amount;
+//         size -= read_amount;
+//     }
+
+//     return read_buf - buf;
+// }
+
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {   
     unsigned int block_count; // Total blocks to read
     unsigned int first_offset; // Offset in the first block
-    unsigned int block_hash_position, block_hash_offset; // Position and offset (in bytes) of the block hash inside the virtual file
-    unsigned int block_offset, read_amount; // The offset (in bytes) of the block inside the 'blocks' file and the amount of the block to read (in bytes)
-    unsigned char block_hash[SHA_DIGEST_LENGTH]; // The hash of the block to read
-    char *read_buf = buf; // Copy of buf to use on loops
+    unsigned int block_hash_position; // Position of the block hash inside the virtual file
+    unsigned int retstat, total_read; // Return status and total bytes read
 
     log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
@@ -502,38 +526,22 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     block_hash_position = offset / BLOCK_SIZE;
     block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;
 
-    // Find the first block hash
-    block_hash_offset = VIRTFILE_METADATA_SIZE + block_hash_position * VIRTFILE_PTR_SIZE;
-    log_syscall("pread", pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
-    log_msg("First offset: %d, Hash pos %d, Block count %d, Hash offset %d\n", first_offset, block_hash_position, block_count, block_hash_offset);
-    sha1_print(block_hash);
-    
-    // Read the contents of the first block
-    table_print(log_msg);
-    block_offset = table_find(block_hash)->offset * BLOCK_SIZE + first_offset;
-    read_amount = MIN(BLOCK_SIZE - first_offset, size);
-    log_msg("Block_offset %d, Read amount %d\n", block_offset, read_amount);
-    log_syscall("pread", pread(blocks_fd, read_buf, read_amount, block_offset), 0);
-    read_buf += read_amount;
-    size -= read_amount;
+    // Read first block
+    retstat = read_file_block(fi->fh, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
+    if (retstat == ERROR) return -1;
+    total_read += retstat;
 
-    log_msg(":)\n");
-    
-    // Iterate over the remaining blocks starting from block 1.
-    for (int i = 1; i < block_count; i++) {
-        // Find the block's hash
-        block_hash_offset += VIRTFILE_PTR_SIZE;
-        log_syscall("pread", pread(fi->fh, block_hash, VIRTFILE_PTR_SIZE, block_hash_offset), 0);
-        
-        // Read the contents of the block
-        block_offset = table_find(block_hash)->offset * BLOCK_SIZE;
-        read_amount = MIN(BLOCK_SIZE, size);
-        log_syscall("pread", pread(blocks_fd, read_buf, read_amount, block_offset), 0);
-        read_buf += read_amount;
-        size -= read_amount;
-    }
+    // Read middle blocks
+    retstat = read_file_blocks(fi->fh, buf + total_read, block_hash_position + 1, block_count - 2);
+    if (retstat == ERROR) return -1;
+    total_read += retstat;
 
-    return read_buf - buf;
+    // Read last block
+    retstat = read_file_block(fi->fh, buf + total_read, block_hash_position + block_count - 1, 0, size - total_read);
+    if (retstat == ERROR) return -1;
+    total_read += retstat;
+
+    return total_read;
 }
 
 /** Write data to an open file

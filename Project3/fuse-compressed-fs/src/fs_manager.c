@@ -4,20 +4,62 @@
 #include <string.h>
 #include <sys/stat.h>
 
+/* File descriptor for the blocks repository */
+int blocks_fd, free_blocks_fd, metadata_fd;
+
+/* List of free blocks */
+list_t *free_blocks;
+
+/* ###################################################################################### */
+/* ################################# INTERNAL FUNCTIONS ################################# */
+/* ###################################################################################### */
+
+/*
+    Reads the metadata of a virtual file.
+    
+    Returns:
+    the total read bytes - on success
+    ERROR - on error
+*/
 static ssize_t get_metadata(int fd, char buf[VIRTFILE_METADATA_SIZE]) {
     int retstat = log_syscall("pread", pread(fd, buf, VIRTFILE_METADATA_SIZE, 0), 0);
     return retstat < 0 ? ERROR : retstat;
 }
 
-static ssize_t get_block_hash(int fd, char hash[SHA_DIGEST_LENGTH], int block_index) {
-    int retstat = log_syscall("pread", pread(fd, hash, VIRTFILE_PTR_SIZE, VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE), 0);
+/*
+    Reads the block hash from a virtual file in the given offset.
+
+    Parameters:
+    block_offset - The offset inside the virtual file not counting the metadata size.
+    
+    Returns:
+    the total read bytes - on success
+    ERROR - on error
+*/
+static ssize_t get_block_hash(int fd, char hash[SHA_DIGEST_LENGTH], int block_offset) {
+    int retstat = log_syscall("pread", pread(fd, hash, VIRTFILE_PTR_SIZE, VIRTFILE_METADATA_SIZE + block_offset), 0);
     return retstat < 0 ? ERROR : retstat;
 }
 
-static ssize_t get_block(int fd, char buf[BLOCK_SIZE], int block_index) {
-    int retstat = log_syscall("pread", pread(fd, buf, BLOCK_SIZE, block_index * BLOCK_SIZE), 0);
+/*
+    Reads a block's content from the block repository.
+
+    Parameters:
+    block_offset - The offset inside the block repository.
+    byte_count - The byte count to read from the block repository.
+    
+    Returns:
+    the total read bytes - on success
+    ERROR - on error
+*/
+static ssize_t get_block(char buf[BLOCK_SIZE], int block_offset, int byte_count) {
+    int retstat = log_syscall("pread", pread(blocks_fd, buf, byte_count, block_offset), 0);
     return retstat < 0 ? ERROR : retstat;
 }
+
+/* ###################################################################################### */
+/* ############################# BLOCK REPOSITORY FUNCTIONS ############################# */
+/* ###################################################################################### */
 
 int create_block(char *buf, char new_hash[SHA_DIGEST_LENGTH]) 
 {
@@ -73,6 +115,10 @@ int find_or_create_block(char *buf, char hash[SHA_DIGEST_LENGTH])
     return BLOCK_FOUND;
 }
 
+/* ###################################################################################### */
+/* ############################### VIRTUAL FILE FUNCTIONS ############################### */
+/* ###################################################################################### */
+
 ssize_t get_real_size(int fd) {
     struct stat statbuf;
     int retstat = log_syscall("lstat", fstat(fd, &statbuf), 0);
@@ -90,19 +136,36 @@ ssize_t get_block_size(int fd) {
     return ((get_real_size(fd) - VIRTFILE_METADATA_SIZE) / VIRTFILE_PTR_SIZE) * BLOCK_SIZE;
 }
 
-ssize_t read_file_blocks(int fd, unsigned int start_index, char *buf, int block_count) {
+ssize_t read_file_block(int fd, char *buf, unsigned int block_index, unsigned int block_offset, short int byte_count) {
+    int retstat;
+    if (byte_count < 0)
+        return 0;
+
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    retstat = get_block_hash(fd, hash, block_index * VIRTFILE_PTR_SIZE);
+    if (retstat < 0) return ERROR;
+
+    int index = table_find(hash)->offset;
+    retstat = get_block(buf, index * BLOCK_SIZE + block_offset, MIN(byte_count, BLOCK_SIZE - block_offset));
+    if (retstat < 0) return ERROR;
+
+    return retstat;
+}
+
+ssize_t read_file_blocks(int fd, char *buf, unsigned int start_index, int block_count) {
     int retstat;
     if (block_count < 0)
         return 0;
     int total_read = 0;
+    int virtual_file_offset = start_index * VIRTFILE_PTR_SIZE;
 
-    for (int i = 0; i < block_count; i++) {
+    for (int i = 0; i < block_count; i++, virtual_file_offset += VIRTFILE_PTR_SIZE) {
         unsigned char hash[SHA_DIGEST_LENGTH];
-        retstat = get_block_hash(fd, hash, start_index + i);
+        retstat = get_block_hash(fd, hash, virtual_file_offset);
         if (retstat < 0) return ERROR;
 
-        int offset = table_find(hash);
-        retstat = get_block(fd, buf + i * BLOCK_SIZE, offset);
+        int index = table_find(hash)->offset;
+        retstat = get_block(buf + total_read, index * BLOCK_SIZE, BLOCK_SIZE);
         if (retstat < 0) return ERROR;
         else total_read += retstat;
     }
