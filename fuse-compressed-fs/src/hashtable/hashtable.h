@@ -9,18 +9,18 @@ typedef struct element {
     unsigned int ref_count;
     unsigned int offset;
     UT_hash_handle hh;
-} element_t;
+} hash_element_t;
 
-element_t *table_add(unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset);
+hash_element_t *table_add(hash_element_t **table, unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset);
 
-element_t *table_find(unsigned char hash[SHA_DIGEST_LENGTH]);
+hash_element_t *table_find(hash_element_t *table, unsigned char hash[SHA_DIGEST_LENGTH]);
 
-int table_remove(unsigned char hash[SHA_DIGEST_LENGTH]);
+int table_remove(hash_element_t *table, unsigned char hash[SHA_DIGEST_LENGTH]);
 
-void table_clear_foreach(void (*func)(element_t *));
+void table_clear_foreach(hash_element_t *table, void (*func)(hash_element_t *));
 
-void table_clear();
+void table_clear(hash_element_t *table);
 
-void table_print();
+void table_print(hash_element_t *table, void (*print_func)(const char *format, ...));
 
 #endif
