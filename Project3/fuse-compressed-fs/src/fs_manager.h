@@ -77,7 +77,7 @@ void save_free_blocks();
     SUCCESS - on success
     ERROR - on error
 */
-int create_block(char *buf, char new_hash[SHA_DIGEST_LENGTH]);
+int create_block(char *buf, unsigned char new_hash[SHA_DIGEST_LENGTH]);
 
 /*
     Deletes the metadata entry for a given block if it exists,
@@ -87,7 +87,7 @@ int create_block(char *buf, char new_hash[SHA_DIGEST_LENGTH]);
     BLOCK_FOUND - If the block was found
     BLOCK_NOT_FOUND - If the block wasn't found
 */
-int remove_block(char hash[SHA_DIGEST_LENGTH]);
+int remove_block(unsigned char hash[SHA_DIGEST_LENGTH]);
 
 /*
     Tries to find a block with the given hash and if it
@@ -101,7 +101,7 @@ int remove_block(char hash[SHA_DIGEST_LENGTH]);
     BLOCK_FOUND - If the block was found inside the repository
     ERROR - on error
 */
-int find_or_create_block(char *buf, char hash[SHA_DIGEST_LENGTH]);
+int find_or_create_block(char *buf, unsigned char hash[SHA_DIGEST_LENGTH]);
 
 /*
     Get real size of a virtual file.
@@ -132,6 +132,24 @@ ssize_t get_total_size(int fd);
     ERROR - on error
 */
 ssize_t get_block_size(int fd);
+
+/*
+    Reads the metadata of a virtual file.
+    
+    Returns:
+    the total read bytes - on success
+    ERROR - on error
+*/
+ssize_t read_metadata(int fd, const char buf[VIRTFILE_METADATA_SIZE]);
+
+/*
+    Write the metadata of a virtual file.
+    
+    Returns:
+    the total read bytes - on success
+    ERROR - on error
+*/
+ssize_t write_metadata(int fd, const char buf[VIRTFILE_METADATA_SIZE]);
 
 /*
     Read block_count full blocks from a file into a buffer starting at block start_index.

@@ -56,7 +56,7 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 {
     strcpy(fpath, BB_DATA->rootdir);
     strcat(fpath, USER_PATH);
-    strncat(fpath, path, PATH_MAX); // ridiculously long paths will
+    strncat(fpath, path, PATH_MAX - 1); // ridiculously long paths will
 				    // break here
 
     log_msg("    bb_fullpath:  rootdir = \"%s\", path = \"%s\", fpath = \"%s\"\n",
@@ -406,7 +406,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset, struc
 
     // Buffer used for new blocks
     char block_buffer[BLOCK_SIZE];
-    char hash[SHA_DIGEST_LENGTH];
+    unsigned char hash[SHA_DIGEST_LENGTH];
     const char *write_buf = buf;
 
     // The stats of the file and the last block size of the file
@@ -476,15 +476,6 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset, struc
     write_buf += size;
 
     return write_buf - buf;
-}
-
-/**
- * Get the block with the hash specified and write the data of the buffer in the block starting
- * from the offset up to BLOCK_SIZE.
- */
-int write_in_block(char *buf, int offset, char hash)
-{
-    // TODO
 }
 
 /** Get file system statistics
