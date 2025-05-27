@@ -9,6 +9,8 @@
     field.
 */
 static node_t *create_node(void *data);
+static int list_add_unsorted(list_t *list, void *data);
+node_t *list_find_larger(list_t *list, void *data, node_t **previous_return);
 
 list_t *list_init() {
     list_t *new_list = (list_t *) malloc(sizeof(list_t));
@@ -27,7 +29,7 @@ list_t *list_init() {
     return new_list;
 }
 
-int list_add(list_t *list, void *data) {
+int list_add_unsorted(list_t *list, void *data) {
     if (list == NULL) 
         return LIST_ERROR;
     if (list_find(list, data, NULL) != NULL)
@@ -109,6 +111,42 @@ void list_destroy_foreach(list_t *list, void (*func)(node_t *)) {
     }
     free(list->head);
     free(list);
+}
+
+int list_add(list_t *list, void *data) {
+    node_t **temp_node = NULL;
+    
+    if (list == NULL) 
+        return LIST_ERROR;
+
+    if (list_find(list, data, NULL) != NULL)
+        return LIST_ALREADY;
+    
+    node_t *node_to_add = create_node(data);
+    if (node_to_add == NULL)
+        return LIST_ERROR;
+
+    list_find_larger(list, data, temp_node);
+    node_to_add->next = (*temp_node)->next;
+    (*temp_node)->next = node_to_add;
+    list->size++;
+    
+    return LIST_SUCCESS;
+}
+
+node_t *list_find_larger(list_t *list, void *data, node_t **previous_return) {
+    if (list == NULL)
+        return NULL;
+    
+    node_t *current;
+    node_t *previous = list->head;
+    list->head->data = data;
+    for (current = list->head->next; (*((unsigned int *) current->data)) > (*((unsigned int *) data)); current = current->next)
+        previous = current;
+    
+    if (previous_return != NULL)
+        *previous_return = previous;
+    return current == list->head ? NULL : current;
 }
 
 static node_t *create_node(void *data) {

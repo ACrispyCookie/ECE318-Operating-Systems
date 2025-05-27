@@ -3,19 +3,19 @@
 
 static element_t *table = NULL;
 
-int table_add(unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset) {
+element_t *table_add(unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset) {
 	element_t *element;
 
 	HASH_FIND_PTR(table, hash, element);
 	if (element != NULL)
-		return -1;
+		return NULL;
 
 	element = malloc(sizeof *element);
     memcpy(element->hash, hash, SHA_DIGEST_LENGTH);
     element->ref_count = ref_count;
     element->offset = offset;
 	HASH_ADD_PTR(table, hash, element);
-	return 0;
+	return element;
 }
 
 element_t *table_find(unsigned char hash[SHA_DIGEST_LENGTH]) {
@@ -51,10 +51,13 @@ void table_clear() {
 	table_clear_foreach(NULL);
 }
 
-void table_print() {
+void table_print(int (*print_func)(const char *format, ...)) {
     element_t *s;
 
     for (s = table; s != NULL; s = s->hh.next) {
-        printf("hash %p: off %u, ref_count %u\n", s->hash, s->offset, s->ref_count);
+		print_func("hash ");
+		for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+			print_func("%02x", s->hash[i]);
+		print_func(": off %u, ref_count %u\n", s->hash, s->offset, s->ref_count);
     }
 }
