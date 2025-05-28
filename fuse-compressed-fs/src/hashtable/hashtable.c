@@ -2,7 +2,7 @@
 #include "log.h"
 #include <stdio.h>
 
-hash_element_t *table_add(hash_element_t **table, unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset) {
+hash_element_t *table_add(hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset) {
 	hash_element_t *element;
 
 	HASH_FIND_PTR(*table, hash, element);
@@ -17,14 +17,14 @@ hash_element_t *table_add(hash_element_t **table, unsigned char hash[SHA_DIGEST_
 	return element;
 }
 
-hash_element_t *table_find(hash_element_t *table, unsigned char hash[SHA_DIGEST_LENGTH]) {
+hash_element_t *table_find(hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]) {
     hash_element_t *element;
     
 	HASH_FIND_PTR(table, hash, element);
     return element;
 }
 
-int table_remove(hash_element_t *table, unsigned char hash[SHA_DIGEST_LENGTH]) {
+int table_remove(hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]) {
 	hash_element_t *element;
 
 	HASH_FIND_PTR(table, hash, element);
