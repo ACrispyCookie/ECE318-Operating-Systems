@@ -77,7 +77,7 @@ void save_free_blocks();
     SUCCESS - on success
     ERROR - on error
 */
-int create_block(char *buf, unsigned char new_hash[SHA_DIGEST_LENGTH]);
+int create_block(const unsigned char *buf, unsigned char new_hash[SHA_DIGEST_LENGTH]);
 
 /*
     Deletes the metadata entry for a given block if it exists,
@@ -87,7 +87,7 @@ int create_block(char *buf, unsigned char new_hash[SHA_DIGEST_LENGTH]);
     BLOCK_FOUND - If the block was found
     BLOCK_NOT_FOUND - If the block wasn't found
 */
-int remove_block(unsigned char hash[SHA_DIGEST_LENGTH]);
+int remove_block(const unsigned char hash[SHA_DIGEST_LENGTH]);
 
 /*
     Tries to find a block with the given hash and if it
@@ -101,7 +101,21 @@ int remove_block(unsigned char hash[SHA_DIGEST_LENGTH]);
     BLOCK_FOUND - If the block was found inside the repository
     ERROR - on error
 */
-int find_or_create_block(char *buf, unsigned char hash[SHA_DIGEST_LENGTH]);
+int add_reference_to_block(const unsigned char *buf, unsigned char hash[SHA_DIGEST_LENGTH]);
+
+/*
+    Tries to find a block with the given hash and if it
+    fails it creates a new one adding it to the block repository.
+
+    If the block already existed it increments the reference count
+    in its metadata entry.
+
+    Returns:
+    BLOCK_FOUND - If the block was found and the reference count was updated.
+    BLOCK_NOT_FOUND - If the block was not found.
+    ERROR - on error
+*/
+int remove_reference_from_block(const unsigned char hash[SHA_DIGEST_LENGTH]);
 
 /*
     Get real size of a virtual file.
@@ -111,7 +125,7 @@ int find_or_create_block(char *buf, unsigned char hash[SHA_DIGEST_LENGTH]);
     number of bytes - on success
     ERROR - on error
 */
-ssize_t get_real_size(int fd);
+ssize_t get_virtual_file_size(int fd);
 
 /*
     Get total size of a virtual file.
@@ -121,17 +135,7 @@ ssize_t get_real_size(int fd);
     number of bytes - on success
     ERROR - on error
 */
-ssize_t get_total_size(int fd);
-
-/*
-    Get block size of a virtual file.
-    (Sum of the sizes of all the blocks in the file)
-
-    Returns:
-    number of bytes - on success
-    ERROR - on error
-*/
-ssize_t get_block_size(int fd);
+ssize_t get_user_file_size(int fd);
 
 /*
     Reads the metadata of a virtual file.
@@ -140,7 +144,7 @@ ssize_t get_block_size(int fd);
     the total read bytes - on success
     ERROR - on error
 */
-ssize_t read_metadata(int fd, const char buf[VIRTFILE_METADATA_SIZE]);
+ssize_t read_metadata(int fd, char buf[VIRTFILE_METADATA_SIZE]);
 
 /*
     Write the metadata of a virtual file.
@@ -168,7 +172,7 @@ ssize_t read_file_blocks(int fd, char *buf, unsigned int start_index, int block_
     Read byte_count bytes from a file at a given block and offset.
 
     Parameters:
-    block_index - The position of the block inside the virtual file.
+    block_index - The position of the block's hash inside the virtual file.
     offset - The offset inside the block to start reading from. Range: [0, 4095]
     byte_count - The amount of bytes to read from the block. Range: [0, 4096]
     
@@ -179,14 +183,45 @@ ssize_t read_file_blocks(int fd, char *buf, unsigned int start_index, int block_
 ssize_t read_file_block(int fd, char *buf, unsigned int block_index, unsigned int offset, short int byte_count);
 
 /*
-    Adds block_count number of blocks that contain zero, starting at
-    position start_index * BLOCK_SIZE inside the file.
+    Write block_count full blocks from a buffer into a file starting at block start_index.
+    This function assumes that the buf has a length that is a multiple of BLOCK_SIZE and
+    that it has enough size for block_count blocks to be read.
 
+    Parameters:
+    start_index - The position of the first block inside the virtual file.
+    block_count - The number of blocks to write.
+    
     Returns:
-    the total written bytes - on success 
+    the total write bytes - on success 
     ERROR - on error
 */
-ssize_t zeropad_file(int fd, unsigned int start_offset, int block_count);
+ssize_t write_file_blocks(int fd, const char *buf, unsigned int start_index, int block_count);
+
+/*
+    Write byte_count bytes to a file at a given block and offset. 
+    This function assumes that the buf has a length that is at least BLOCK_SIZE and
+    that it has enough size after offset for byte_count bytes to be read.
+
+    Parameters:
+    block_index - The position of the block's hash inside the virtual file.
+    offset - The offset inside the block to start writing to. Range: [0, 4095]
+    byte_count - The amount of bytes to write to the file. Range: [0, 4096]
+    
+    Returns:
+    the total read bytes - on success 
+    ERROR - on error
+*/
+ssize_t write_file_block(int fd, const char *buf, unsigned int block_index, unsigned int offset, short int byte_count);
+
+/*
+    Adds zero padding to file until it reaches
+    new_size bytes size.
+
+    Returns:
+    SUCCESS - on success
+    ERROR - on error
+*/
+int zeropad_file(int fd, unsigned int new_size);
 
 /*
     Shrinks the file to a total size of new_size bytes.

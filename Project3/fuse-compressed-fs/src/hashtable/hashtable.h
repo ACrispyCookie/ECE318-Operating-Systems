@@ -11,11 +11,11 @@ typedef struct element {
     UT_hash_handle hh;
 } hash_element_t;
 
-hash_element_t *table_add(hash_element_t **table, unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset);
+hash_element_t *table_add(hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset);
 
-hash_element_t *table_find(hash_element_t *table, unsigned char hash[SHA_DIGEST_LENGTH]);
+hash_element_t *table_find(hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]);
 
-int table_remove(hash_element_t *table, unsigned char hash[SHA_DIGEST_LENGTH]);
+int table_remove(hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]);
 
 void table_clear_foreach(hash_element_t *table, void (*func)(hash_element_t *));
 
