@@ -428,9 +428,6 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset, struc
     block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;
     file_size = get_user_file_size(new_fd);
 
-    if (offset + size <= file_size)
-        return 0;
-
     // Zero pad file
     if (file_size > 0) {
         retstat = zeropad_file(new_fd, offset + size);
