@@ -205,6 +205,10 @@ int remove_block(const unsigned char hash[SHA_DIGEST_LENGTH])
     table_remove(&metadata, hash);
     list_add(free_blocks, block_index);
 
+    // TODO: call defrag - WIP
+    // if (check_and_defragment_blocks() < 0)
+    //     return ERROR;
+
     return BLOCK_FOUND;
 }
 
@@ -243,6 +247,61 @@ int remove_reference_from_block(const unsigned char hash[SHA_DIGEST_LENGTH])
 
     return BLOCK_FOUND;
 }
+
+int check_and_defragment_blocks() {
+    ssize_t blocks_filesize;
+    struct stat statbuf;
+    unsigned int repo_blocks_count, free_blocks_count;
+
+    // Get the number of the blocks in the free blocks list and the repository
+    int retstat = log_syscall("lstat", fstat(blocks_fd, &statbuf), 0);
+    if (retstat < 0)
+        return ERROR;
+
+    blocks_filesize = statbuf.st_size;
+
+    repo_blocks_count = blocks_filesize / BLOCK_SIZE;
+    free_blocks_count = free_blocks->size;
+
+    // Compare the percentage of the real internal defragmentation with the max allowed
+    if (free_blocks_count > 0 && ((float)free_blocks_count / repo_blocks_count) <= FRAGMENTATION_MAX_PERCENTAGE)
+        return SUCCESS;
+
+    // Above max allowance, defragment repository
+    unsigned int blocks_to_defrag_count = ((free_blocks_count - FRAGMENTATION_MAX_PERCENTAGE * repo_blocks_count)
+                                          / (1 - FRAGMENTATION_MAX_PERCENTAGE)) + 1;
+    unsigned char buf[BLOCK_SIZE];
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    block_index_t index;
+    hash_element_t* hashtable_element;
+
+    // For each used block in the end of the blocks repository, move it to the up-most unused space
+    for (int i = 0; i < blocks_to_defrag_count; i++) {
+        // TODO: get the bottom-most used block
+        // Read block and get the hash
+        read_block(buf, (repo_blocks_count - free_blocks_count - i - 1) * BLOCK_SIZE, BLOCK_SIZE);
+        SHA1(buf, BLOCK_SIZE, hash);
+
+        index = *((block_index_t *) free_blocks->head->next->data);
+
+        // Copy/re-create block, automatically selects top-most empty space
+        retstat = create_block(buf, hash);
+        if (retstat < 0)
+            return ERROR;
+
+        // Update the block index in the hashtable
+        hashtable_element = table_find(metadata, hash);
+        hashtable_element->block_index = index;
+    }
+
+    // Truncate blocks repository by the amount of blocks defragmented
+    retstat = ftruncate(blocks_fd, blocks_filesize - blocks_to_defrag_count * BLOCK_SIZE);
+    if (retstat < 0)
+        return ERROR;
+
+    return SUCCESS;
+}
+
 
 /* ###################################################################################### */
 /* ############################### VIRTUAL FILE FUNCTIONS ############################### */
@@ -462,13 +521,13 @@ int truncate_file(int fd, ssize_t new_size) {
         retstat = read_hash_from_file(fd, hash, offset);
         if (retstat <= 0)
             break;
-            
+
         remove_reference_from_block(hash);
         offset += VIRTFILE_PTR_SIZE;
     }
     if (retstat < 0) return ERROR;
     
-    // Truncate virtual file to new size
+    // Truncate real file to new size
     retstat = ftruncate(fd, new_real_size);
 
     return retstat < 0 ? ERROR : SUCCESS;
