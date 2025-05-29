@@ -2,7 +2,7 @@
 #include "log.h"
 #include <stdio.h>
 
-hash_element_t *table_add(hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int offset) {
+hash_element_t *table_add(hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int block_index) {
 	hash_element_t *element;
 
 	HASH_FIND_PTR(*table, hash, element);
@@ -12,7 +12,7 @@ hash_element_t *table_add(hash_element_t **table, const unsigned char hash[SHA_D
 	element = malloc(sizeof *element);
     memcpy(element->hash, hash, SHA_DIGEST_LENGTH);
     element->ref_count = ref_count;
-    element->offset = offset;
+    element->block_index = block_index;
 	HASH_ADD_PTR(*table, hash, element);
 	return element;
 }
@@ -57,6 +57,6 @@ void table_print(hash_element_t *table, void (*print_func)(const char *format, .
 		print_func("hash ");
 		for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
 			print_func("%02x", s->hash[i]);
-		print_func(": off %u, ref_count %u\n", s->offset, s->ref_count);
+		print_func(": off %u, ref_count %u\n", s->block_index, s->ref_count);
     }
 }

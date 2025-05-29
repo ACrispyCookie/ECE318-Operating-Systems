@@ -15,8 +15,7 @@
 
 // Metadata file related
 #define METADATA_REF_COUNT_SIZE 4
-#define METADATA_OFFSET_SIZE 4
-#define METADATA_FILE_ENTRY_SIZE (HASH_SIZE + METADATA_REF_COUNT_SIZE + METADATA_OFFSET_SIZE)
+#define METADATA_BLOCK_INDEX_SIZE 4
 #define DEFRAGMENT_MAX_UNUSED 2
 
 // File related
@@ -39,11 +38,12 @@
 #define MIN(x, y) x > y ? y : x
 #define MAX(x, y) x > y ? x : y
 
-/* Types for defined size */
+/*  Types for defined size 
+    NEED TO BE CHANGED SEPERATELY IN hashtable.h
+*/
 typedef unsigned int ref_count_t;
 typedef unsigned int block_index_t;
-typedef unsigned short int block_offset_t;
-typedef unsigned short int file_metadata_t;
+typedef unsigned short block_offset_t;
 
 /* File descriptor for the blocks repository */
 extern int blocks_fd, free_blocks_fd, metadata_fd;
@@ -164,7 +164,7 @@ ssize_t write_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA
     the total read bytes - on success 
     ERROR - on error
 */
-ssize_t read_block_from_file(int fd, char *buf, unsigned int block_index, unsigned int block_offset, short int byte_count);
+ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block_offset_t block_offset, short byte_count);
 
 /*
     Read block_count full blocks from a file into a buffer starting at block start_index.
@@ -177,7 +177,7 @@ ssize_t read_block_from_file(int fd, char *buf, unsigned int block_index, unsign
     the total read bytes - on success 
     ERROR - on error
 */
-ssize_t read_blocks_from_file(int fd, char *buf, unsigned int start_index, int block_count);
+ssize_t read_blocks_from_file(int fd, char *buf, block_index_t start_index, int block_count);
 
 /*
     Write byte_count bytes to a file at a given block and offset. 
@@ -193,7 +193,7 @@ ssize_t read_blocks_from_file(int fd, char *buf, unsigned int start_index, int b
     the total written bytes - on success 
     ERROR - on error
 */
-ssize_t write_block_to_file(int fd, const char *buf, unsigned int block_index, unsigned int block_offset, short int byte_count);
+ssize_t write_block_to_file(int fd, const char *buf, block_index_t block_index, block_offset_t block_offset, short byte_count);
 
 /*
     Write block_count full blocks from a buffer into a file starting at block start_index.
@@ -208,7 +208,7 @@ ssize_t write_block_to_file(int fd, const char *buf, unsigned int block_index, u
     the total written bytes - on success 
     ERROR - on error
 */
-ssize_t write_blocks_to_file(int fd, const char *buf, unsigned int start_index, int block_count);
+ssize_t write_blocks_to_file(int fd, const char *buf, block_index_t start_index, int block_count);
 
 /*
     Adds zero padding to file until it reaches
@@ -218,7 +218,7 @@ ssize_t write_blocks_to_file(int fd, const char *buf, unsigned int start_index, 
     SUCCESS - on success
     ERROR - on error
 */
-int zeropad_file(int fd, unsigned int new_size);
+int zeropad_file(int fd, ssize_t new_size);
 
 /*
     Shrinks the file to a total size of new_size bytes.
@@ -229,6 +229,6 @@ int zeropad_file(int fd, unsigned int new_size);
     SUCCESS - on success
     ERROR - on error
 */
-int truncate_file(int fd, unsigned int new_size);
+int truncate_file(int fd, ssize_t new_size);
 
 #endif
