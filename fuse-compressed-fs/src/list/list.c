@@ -28,6 +28,7 @@ list_t *list_init(int (*comparator)(void *, void *)) {
     new_list->size = 0;
     new_list->head = node_to_add;
     node_to_add->next = node_to_add;
+    node_to_add->prev = node_to_add;
     return new_list;
 }
 
@@ -44,6 +45,8 @@ int list_add(list_t *list, void *data) {
 
     node_t *previous_node = list_find_larger(list, data);
     node_to_add->next = previous_node->next;
+    node_to_add->prev = previous_node;
+    previous_node->next->prev = node_to_add;
     previous_node->next = node_to_add;
     list->size++;
     
@@ -61,6 +64,8 @@ static int list_add_unsorted(list_t *list, void *data) {
         return LIST_ERROR;
 
     node_to_add->next = list->head->next;
+    node_to_add->prev = list->head;
+    list->head->next->prev = node_to_add;
     list->head->next = node_to_add;
     list->size++;
     return LIST_SUCCESS;
@@ -76,6 +81,7 @@ int list_remove(list_t *list, void *data) {
         return LIST_ALREADY;
     
     previous_node->next = found_node->next;
+    found_node->next->prev = previous_node;
     free(found_node);
     list->size--;
     return LIST_SUCCESS;
@@ -95,6 +101,7 @@ void *list_remove_index(list_t *list, unsigned int index) {
     }
     
     previous_node->next = found_node->next;
+    found_node->next->prev = previous_node;
     void *data = found_node->data;
     free(found_node);
     list->size--;
