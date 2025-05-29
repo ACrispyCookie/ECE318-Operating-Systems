@@ -86,8 +86,6 @@ int bb_getattr(const char *path, struct stat *statbuf)
     retstat = log_syscall("lstat", lstat(fpath, statbuf), 0);
     log_stat(statbuf);
 
-    table_print(metadata, log_msg);
-
     // If it is a regular file
     if (S_ISREG(statbuf->st_mode)) {
         retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);
@@ -435,9 +433,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset, struc
 
     // Zero pad file
     if (file_size > 0) {
-        log_msg("write 1\n");
         retstat = zeropad_file(new_fd, offset + size);
-        log_msg("write 2 %d\n", retstat);
         if(retstat == ERROR) return -1;
     } else { // Or write new size if needed
         last_block_size = file_size % BLOCK_SIZE;
@@ -451,27 +447,22 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset, struc
 
     // Write first block
     retstat = write_file_block(new_fd, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
-    log_msg("write 3 %d\n", retstat);
     if (retstat == ERROR) return -1;
     total_write += retstat;
 
     // Write middle blocks
     retstat = write_file_blocks(new_fd, buf + total_write, block_hash_position + 1, block_count - 2);
-    log_msg("write 4 %d\n", retstat);
     if (retstat == ERROR) return -1;
     total_write += retstat;
 
     // Write last block
     retstat = write_file_block(new_fd, buf + total_write, block_hash_position + block_count - 1, 0, size - total_write);
-    log_msg("write 5 %d\n", retstat);
     if (retstat == ERROR) return -1;
     total_write += retstat;
 
     retstat = log_syscall("close", close(new_fd), 0);
-    log_msg("write 6 %d\n", retstat);
     if (retstat < 0) return -1;
 
-    log_msg("write 7 %d\n", total_write);
     return total_write;
 }
 
@@ -950,8 +941,6 @@ int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *f
     retstat = fstat(fi->fh, statbuf);
     if (retstat < 0)
 	retstat = log_error("bb_fgetattr fstat");
-
-    table_print(metadata, log_msg);
 
     if (S_ISREG(statbuf->st_mode)) {
         retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);
