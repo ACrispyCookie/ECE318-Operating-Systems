@@ -7,7 +7,7 @@
 
 // General sizes
 #define BLOCK_SIZE 4096
-#define HASH_SIZE 20
+#define HASH_SIZE SHA_DIGEST_LENGTH
 
 // User virtual file related
 #define VIRTFILE_METADATA_SIZE 2
