@@ -7,7 +7,7 @@
 typedef struct element {
     unsigned char hash[SHA_DIGEST_LENGTH];
     unsigned int ref_count;
-    unsigned int offset;
+    unsigned int block_index;
     UT_hash_handle hh;
 } hash_element_t;
 
