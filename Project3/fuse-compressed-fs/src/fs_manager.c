@@ -13,13 +13,6 @@ list_t *free_blocks;
 /* Metadata hash table */
 hash_element_t *metadata;
 
-static int offset_comparator(void *num1, void *num2);
-static ssize_t read_block_hash(int fd, unsigned char hash[SHA_DIGEST_LENGTH], int block_offset);
-static ssize_t write_block_hash(int fd, unsigned char hash[SHA_DIGEST_LENGTH], int block_offset);
-static ssize_t read_block(unsigned char buf[BLOCK_SIZE], int block_offset, int byte_count);
-static void save_metadata_element(hash_element_t *element);
-static void save_free_block(node_t *node);
-
 void sha1_print(unsigned char hash[SHA_DIGEST_LENGTH]) {
     log_msg("SHA1 hash: ");
     for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
@@ -28,20 +21,10 @@ void sha1_print(unsigned char hash[SHA_DIGEST_LENGTH]) {
     log_msg("\n");
 }
 
-/* ###################################################################################### */
-/* ################################# INTERNAL FUNCTIONS ################################# */
-/* ###################################################################################### */
-
 /*
     Comparator for free_blocks list
 */
-static int offset_comparator(void *num1, void *num2) {
-    unsigned int offset1 = *((unsigned int *) num1);
-    unsigned int offset2 = *((unsigned int *) num2);
-    long int diff = (long int) offset1 - offset2;
-
-    return (diff > 0) - (diff < 0);
-}
+static int offset_comparator(void *num1, void *num2);
 
 /*
     Reads the block hash from a virtual file in the given offset.
@@ -53,10 +36,7 @@ static int offset_comparator(void *num1, void *num2) {
     the total read bytes - on success
     ERROR - on error
 */
-static ssize_t read_block_hash(int fd, unsigned char hash[SHA_DIGEST_LENGTH], int block_offset) {
-    int retstat = log_syscall("pread", pread(fd, hash, VIRTFILE_PTR_SIZE, block_offset), 0);
-    return retstat < 0 ? ERROR : retstat;
-}
+static ssize_t read_hash_from_file(int fd, unsigned char hash[SHA_DIGEST_LENGTH], int block_offset);
 
 /*
     Writes the block hash to a virtual file in the given offset.
@@ -68,10 +48,7 @@ static ssize_t read_block_hash(int fd, unsigned char hash[SHA_DIGEST_LENGTH], in
     the total write bytes - on success
     ERROR - on error
 */
-static ssize_t write_block_hash(int fd, unsigned char hash[SHA_DIGEST_LENGTH], int block_offset) {
-    int retstat = log_syscall("pwrite", pwrite(fd, hash, VIRTFILE_PTR_SIZE, block_offset), 0);
-    return retstat < 0 ? ERROR : retstat;
-}
+static ssize_t write_hash_to_file(int fd, unsigned char hash[SHA_DIGEST_LENGTH], int block_offset);
 
 /*
     Reads a block's content from the block repository.
@@ -84,9 +61,41 @@ static ssize_t write_block_hash(int fd, unsigned char hash[SHA_DIGEST_LENGTH], i
     the total read bytes - on success
     ERROR - on error
 */
-static ssize_t read_block(unsigned char buf[BLOCK_SIZE], int block_offset, int byte_count) {
-    int retstat = log_syscall("pread", pread(blocks_fd, buf, byte_count, block_offset), 0);
-    return retstat < 0 ? ERROR : retstat;
+static ssize_t read_block(unsigned char buf[BLOCK_SIZE], int block_offset, int byte_count);
+
+/*
+    Writes a block's content to the block repository.
+
+    Parameters:
+    block_offset - The offset inside the block repository.
+    byte_count - The byte count to write to the block repository.
+    
+    Returns:
+    the total written bytes - on success
+    ERROR - on error
+*/
+static ssize_t write_block(unsigned char buf[BLOCK_SIZE], int block_offset, int byte_count);
+
+/*
+    Saves a metadata entry in the metadata file.
+*/
+static void save_metadata_element(hash_element_t *element);
+
+/*
+    Saves a free block in the free blocks file
+*/
+static void save_free_block(node_t *node);
+
+/* ###################################################################################### */
+/* ################################# INTERNAL FUNCTIONS ################################# */
+/* ###################################################################################### */
+
+static int offset_comparator(void *num1, void *num2) {
+    unsigned int offset1 = *((unsigned int *) num1);
+    unsigned int offset2 = *((unsigned int *) num2);
+    long int diff = (long int) offset1 - offset2;
+
+    return (diff > 0) - (diff < 0);
 }
 
 /* ###################################################################################### */
@@ -139,9 +148,6 @@ void save_free_blocks() {
     close(free_blocks_fd);
 }
 
-/*
-    Saves a metadata entry in the metadata file.
-*/
 static void save_metadata_element(hash_element_t *element) {
     unsigned char hash[SHA_DIGEST_LENGTH];
     memcpy(hash, element->hash, SHA_DIGEST_LENGTH);
@@ -153,9 +159,6 @@ static void save_metadata_element(hash_element_t *element) {
     log_syscall("write", write(metadata_fd, &offset, METADATA_OFFSET_SIZE), 0);
 }
 
-/*
-    Saves a free block in the free blocks file
-*/
 static void save_free_block(node_t *node) {
     unsigned int *offset = (unsigned int *) node->data;
     log_syscall("write", write(free_blocks_fd, offset, METADATA_OFFSET_SIZE), 0);
@@ -205,6 +208,11 @@ int remove_block(const unsigned char hash[SHA_DIGEST_LENGTH])
     return BLOCK_FOUND;
 }
 
+static ssize_t read_block(unsigned char buf[BLOCK_SIZE], int block_offset, int byte_count) {
+    int retstat = log_syscall("pread", pread(blocks_fd, buf, byte_count, block_offset), 0);
+    return retstat < 0 ? ERROR : retstat;
+}
+
 int add_reference_to_block(const unsigned char *buf, unsigned char hash[SHA_DIGEST_LENGTH]) 
 {
     SHA1(buf, BLOCK_SIZE, hash);
@@ -248,29 +256,39 @@ ssize_t get_virtual_file_size(int fd) {
 
 ssize_t get_user_file_size(int fd) {
     unsigned short int last_block_size;
-    ssize_t retstat = read_metadata(fd, (char *) &last_block_size);
+    ssize_t retstat = read_metadata_from_file(fd, (unsigned char *) &last_block_size);
     ssize_t virtual_file_size = get_virtual_file_size(fd);
     ssize_t size = last_block_size + ((virtual_file_size - VIRTFILE_METADATA_SIZE) / VIRTFILE_PTR_SIZE - (last_block_size != 0)) * BLOCK_SIZE;
     return retstat < 0 ? ERROR : MAX(size, 0);
 }
 
-ssize_t read_metadata(int fd, char buf[VIRTFILE_METADATA_SIZE]) {
+ssize_t read_metadata_from_file(int fd, unsigned char buf[VIRTFILE_METADATA_SIZE]) {
     int retstat = log_syscall("pread", pread(fd, buf, VIRTFILE_METADATA_SIZE, 0), 0);
     return retstat < 0 ? ERROR : retstat;
 }
 
-ssize_t write_metadata(int fd, const char buf[VIRTFILE_METADATA_SIZE]) {
+ssize_t write_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]) {
     int retstat = log_syscall("pwrite", pwrite(fd, buf, VIRTFILE_METADATA_SIZE, 0), 0);
     return retstat < 0 ? ERROR : retstat;
 }
 
-ssize_t read_file_block(int fd, char *buf, unsigned int block_index, unsigned int block_offset, short int byte_count) {
+static ssize_t read_hash_from_file(int fd, unsigned char hash[SHA_DIGEST_LENGTH], int block_offset) {
+    int retstat = log_syscall("pread", pread(fd, hash, VIRTFILE_PTR_SIZE, block_offset), 0);
+    return retstat < 0 ? ERROR : retstat;
+}
+
+static ssize_t write_hash_to_file(int fd, unsigned char hash[SHA_DIGEST_LENGTH], int block_offset) {
+    int retstat = log_syscall("pwrite", pwrite(fd, hash, VIRTFILE_PTR_SIZE, block_offset), 0);
+    return retstat < 0 ? ERROR : retstat;
+}
+
+ssize_t read_block_from_file(int fd, char *buf, unsigned int block_index, unsigned int block_offset, short int byte_count) {
     int retstat;
     if (byte_count <= 0)
         return 0;
 
     unsigned char hash[SHA_DIGEST_LENGTH];
-    retstat = read_block_hash(fd, hash, VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE);
+    retstat = read_hash_from_file(fd, hash, VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE);
     if (retstat < 0) return ERROR;
 
     int index = table_find(metadata, hash)->offset;
@@ -280,7 +298,7 @@ ssize_t read_file_block(int fd, char *buf, unsigned int block_index, unsigned in
     return retstat;
 }
 
-ssize_t read_file_blocks(int fd, char *buf, unsigned int start_index, int block_count) {
+ssize_t read_blocks_from_file(int fd, char *buf, unsigned int start_index, int block_count) {
     int retstat;
     if (block_count <= 0)
         return 0;
@@ -289,7 +307,7 @@ ssize_t read_file_blocks(int fd, char *buf, unsigned int start_index, int block_
 
     for (int i = 0; i < block_count; i++, virtual_file_offset += VIRTFILE_PTR_SIZE) {
         unsigned char hash[SHA_DIGEST_LENGTH];
-        retstat = read_block_hash(fd, hash, virtual_file_offset);
+        retstat = read_hash_from_file(fd, hash, virtual_file_offset);
         if (retstat < 0) return ERROR;
 
         int index = table_find(metadata, hash)->offset;
@@ -301,7 +319,7 @@ ssize_t read_file_blocks(int fd, char *buf, unsigned int start_index, int block_
     return total_read;
 }
 
-ssize_t write_file_block(int fd, const char *buf, unsigned int block_index, unsigned int block_offset, short int byte_count) {
+ssize_t write_block_to_file(int fd, const char *buf, unsigned int block_index, unsigned int block_offset, short int byte_count) {
     int retstat, total_written = 0;
     if (byte_count <= 0)
         return 0;
@@ -312,7 +330,7 @@ ssize_t write_file_block(int fd, const char *buf, unsigned int block_index, unsi
     int old_block_exists;
 
     // Read current block contents in the current block_index 
-    retstat = read_block_hash(fd, old_hash, virtual_file_offset);
+    retstat = read_hash_from_file(fd, old_hash, virtual_file_offset);
     if (retstat < 0) return ERROR;
 
     // Read previous block content or fill it with zeros
@@ -342,13 +360,13 @@ ssize_t write_file_block(int fd, const char *buf, unsigned int block_index, unsi
     if (memcmp(old_hash, new_hash, SHA_DIGEST_LENGTH) == 0)
         return byte_count;
 
-    retstat = write_block_hash(fd, new_hash, virtual_file_offset);
+    retstat = write_hash_to_file(fd, new_hash, virtual_file_offset);
     if (retstat < 0) return ERROR;
 
     return byte_count;
 }
 
-ssize_t write_file_blocks(int fd, const char *buf, unsigned int start_index, int block_count) {
+ssize_t write_blocks_to_file(int fd, const char *buf, unsigned int start_index, int block_count) {
     int retstat;
     if (block_count <= 0)
         return 0;
@@ -356,7 +374,7 @@ ssize_t write_file_blocks(int fd, const char *buf, unsigned int start_index, int
 
     for (int i = 0; i < block_count; i++, virtual_file_offset += VIRTFILE_PTR_SIZE) {
         unsigned char old_hash[SHA_DIGEST_LENGTH], new_hash[SHA_DIGEST_LENGTH];
-        retstat = read_block_hash(fd, old_hash, virtual_file_offset);
+        retstat = read_hash_from_file(fd, old_hash, virtual_file_offset);
         if (retstat < 0) return ERROR;
         
         retstat = add_reference_to_block((unsigned char *) buf, new_hash);
@@ -368,7 +386,7 @@ ssize_t write_file_blocks(int fd, const char *buf, unsigned int start_index, int
         if (memcmp(old_hash, new_hash, SHA_DIGEST_LENGTH) == 0)
             continue;
 
-        retstat = write_block_hash(fd, new_hash, virtual_file_offset);
+        retstat = write_hash_to_file(fd, new_hash, virtual_file_offset);
         if (retstat < 0) return ERROR;
     }
 
@@ -389,14 +407,14 @@ int zeropad_file(int fd, unsigned int new_size) {
     unsigned short int new_last_block_size = new_size % BLOCK_SIZE;
 
     // Read old last block size and update it
-    retstat = read_metadata(fd, (char *) &last_block_size);
+    retstat = read_metadata_from_file(fd, (unsigned char *) &last_block_size);
     if (retstat == ERROR) return ERROR;
-    retstat = write_metadata(fd, (char *) &new_last_block_size);
+    retstat = write_metadata_to_file(fd, (unsigned char *) &new_last_block_size);
     if (retstat == ERROR) return ERROR;
     
     // Fill the first block with zeros
     memset(buf, 0, BLOCK_SIZE);
-    retstat = write_file_block(fd, (char *) buf, last_block_index, last_block_size, (BLOCK_SIZE - last_block_size) % BLOCK_SIZE);
+    retstat = write_block_to_file(fd, (char *) buf, last_block_index, last_block_size, (BLOCK_SIZE - last_block_size) % BLOCK_SIZE);
     if (retstat == ERROR) return -1;
 
     // If not other zero blocks are needed
@@ -413,7 +431,7 @@ int zeropad_file(int fd, unsigned int new_size) {
     // Write zero blocks to the file
     ssize_t offset = get_virtual_file_size(fd);
     for (int i = 0; i < zero_blocks; i++, offset += VIRTFILE_PTR_SIZE) {
-        retstat = write_block_hash(fd, hash, offset);
+        retstat = write_hash_to_file(fd, hash, offset);
         if (retstat <= 0)
             break;
     }
@@ -435,13 +453,13 @@ int truncate_file(int fd, unsigned int new_size) {
     unsigned int offset = new_real_size;
 
     // Write new last_block_size
-    retstat = write_metadata(fd, (char *) &last_block_size);
+    retstat = write_metadata_to_file(fd, (unsigned char *) &last_block_size);
     if (retstat == ERROR) return ERROR;
 
     while (1) {
         unsigned char hash[SHA_DIGEST_LENGTH];
 
-        retstat = read_block_hash(fd, hash, offset);
+        retstat = read_hash_from_file(fd, hash, offset);
         if (retstat <= 0)
             break;
             

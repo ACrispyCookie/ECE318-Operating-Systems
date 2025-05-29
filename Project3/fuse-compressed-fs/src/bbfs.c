@@ -161,7 +161,7 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 
     // Write metadata
     retstat = log_syscall("open", fd = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
-    retstat = write_metadata(fd, (char *) &last_block_size);
+    retstat = write_metadata_to_file(fd, (unsigned char *) &last_block_size);
     retstat = log_syscall("close", close(fd), 0);
 
     return retstat;
@@ -380,17 +380,17 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;
 
     // Read first block
-    retstat = read_file_block(fi->fh, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
+    retstat = read_block_from_file(fi->fh, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
     if (retstat == ERROR) return -1;
     total_read += retstat;
 
     // Read middle blocks
-    retstat = read_file_blocks(fi->fh, buf + total_read, block_hash_position + 1, block_count - 2);
+    retstat = read_blocks_from_file(fi->fh, buf + total_read, block_hash_position + 1, block_count - 2);
     if (retstat == ERROR) return -1;
     total_read += retstat;
 
     // Read last block
-    retstat = read_file_block(fi->fh, buf + total_read, block_hash_position + block_count - 1, 0, size - total_read);
+    retstat = read_block_from_file(fi->fh, buf + total_read, block_hash_position + block_count - 1, 0, size - total_read);
     if (retstat == ERROR) return -1;
     total_read += retstat;
 
@@ -440,23 +440,23 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset, struc
         new_last_block_size = (offset + size) % BLOCK_SIZE;
 
         if (new_last_block_size != last_block_size) {
-            retstat = write_metadata(new_fd, (char *) &new_last_block_size);
+            retstat = write_metadata_to_file(new_fd, (unsigned char *) &new_last_block_size);
             if(retstat == ERROR) return -1;
         }
     }
 
     // Write first block
-    retstat = write_file_block(new_fd, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
+    retstat = write_block_to_file(new_fd, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
     if (retstat == ERROR) return -1;
     total_write += retstat;
 
     // Write middle blocks
-    retstat = write_file_blocks(new_fd, buf + total_write, block_hash_position + 1, block_count - 2);
+    retstat = write_blocks_to_file(new_fd, buf + total_write, block_hash_position + 1, block_count - 2);
     if (retstat == ERROR) return -1;
     total_write += retstat;
 
     // Write last block
-    retstat = write_file_block(new_fd, buf + total_write, block_hash_position + block_count - 1, 0, size - total_write);
+    retstat = write_block_to_file(new_fd, buf + total_write, block_hash_position + block_count - 1, 0, size - total_write);
     if (retstat == ERROR) return -1;
     total_write += retstat;
 
