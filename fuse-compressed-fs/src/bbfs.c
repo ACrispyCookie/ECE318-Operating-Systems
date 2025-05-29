@@ -86,6 +86,8 @@ int bb_getattr(const char *path, struct stat *statbuf)
     retstat = log_syscall("lstat", lstat(fpath, statbuf), 0);
     log_stat(statbuf);
 
+    table_print(metadata, log_msg);
+
     // If it is a regular file
     if (S_ISREG(statbuf->st_mode)) {
         retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);
@@ -189,7 +191,7 @@ int bb_unlink(const char *path)
 	    path);
     bb_fullpath(fpath, path);
 
-    retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);
+    retstat = log_syscall("open", fd = open(fpath, O_RDWR), 0);
     if (retstat < 0) return -1;
 
     retstat = truncate_file(fd, 0);
@@ -407,46 +409,69 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
  */
 int bb_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
+    char fpath[PATH_MAX];
     unsigned int block_count; // Total blocks to read
     unsigned int first_offset; // Offset in the first block
     unsigned int file_size; // File size in bytes
     unsigned int block_hash_position; // Position of the block hash inside the virtual file
-    unsigned int new_last_block_size; // New last block size
+    unsigned int last_block_size, new_last_block_size; // New last block size
     unsigned int total_write = 0; // Return status and total bytes written
     int retstat;
 
     log_msg("\nbb_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n", path, buf, size, offset, fi);
     log_fi(fi);
+    bb_fullpath(fpath, path);
+
+    int new_fd = log_syscall("open", open(fpath, O_RDWR), 0);
+    if (new_fd < 0) return -1;
 
     first_offset = offset % BLOCK_SIZE;
     block_hash_position = offset / BLOCK_SIZE;
     block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;
+    file_size = get_user_file_size(new_fd);
 
-    // Write new file size if needed
-    file_size = get_user_file_size(fi->fh);
-    if (offset + size > file_size) {
-        new_last_block_size = (offset + size) % BLOCK_SIZE;
-        write_metadata(fi->fh, (char *) &new_last_block_size);
-    }
+    if (offset + size <= file_size)
+        return 0;
 
     // Zero pad file
-    zeropad_file(fi->fh, offset);
+    if (file_size > 0) {
+        log_msg("write 1\n");
+        retstat = zeropad_file(new_fd, offset + size);
+        log_msg("write 2 %d\n", retstat);
+        if(retstat == ERROR) return -1;
+    } else { // Or write new size if needed
+        last_block_size = file_size % BLOCK_SIZE;
+        new_last_block_size = (offset + size) % BLOCK_SIZE;
+
+        if (new_last_block_size != last_block_size) {
+            retstat = write_metadata(new_fd, (char *) &new_last_block_size);
+            if(retstat == ERROR) return -1;
+        }
+    }
 
     // Write first block
-    retstat = write_file_block(fi->fh, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
+    retstat = write_file_block(new_fd, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
+    log_msg("write 3 %d\n", retstat);
     if (retstat == ERROR) return -1;
     total_write += retstat;
 
     // Write middle blocks
-    retstat = write_file_blocks(fi->fh, buf + total_write, block_hash_position + 1, block_count - 2);
+    retstat = write_file_blocks(new_fd, buf + total_write, block_hash_position + 1, block_count - 2);
+    log_msg("write 4 %d\n", retstat);
     if (retstat == ERROR) return -1;
     total_write += retstat;
 
     // Write last block
-    retstat = write_file_block(fi->fh, buf + total_write, block_hash_position + block_count - 1, 0, size - total_write);
+    retstat = write_file_block(new_fd, buf + total_write, block_hash_position + block_count - 1, 0, size - total_write);
+    log_msg("write 5 %d\n", retstat);
     if (retstat == ERROR) return -1;
     total_write += retstat;
 
+    retstat = log_syscall("close", close(new_fd), 0);
+    log_msg("write 6 %d\n", retstat);
+    if (retstat < 0) return -1;
+
+    log_msg("write 7 %d\n", total_write);
     return total_write;
 }
 
@@ -778,6 +803,7 @@ int bb_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 // FUSE).
 void *bb_init(struct fuse_conn_info *conn)
 {
+    int retstat;
     log_msg("\nbb_init()\n");
     
     log_conn(conn);
@@ -787,6 +813,7 @@ void *bb_init(struct fuse_conn_info *conn)
     char blocks_path[PATH_MAX];
     char free_blocks_path[PATH_MAX];
     char metadata_path[PATH_MAX];
+    char user_folder_path[PATH_MAX];
 
     strcpy(blocks_path, BB_DATA->rootdir);
     strcat(blocks_path, BLOCKS_PATH);
@@ -799,6 +826,11 @@ void *bb_init(struct fuse_conn_info *conn)
     strcpy(metadata_path, BB_DATA->rootdir);
     strcat(metadata_path, METADATA_PATH);
     log_syscall("open", metadata_fd = open(metadata_path, O_CREAT | O_RDWR, STORAGE_FILES_PERMISSIONS), 0);
+
+    strcpy(user_folder_path, BB_DATA->rootdir);
+    strcat(user_folder_path, USER_PATH);
+    log_syscall("mkdir", retstat = mkdir(user_folder_path, USER_FOLDER_PERMISSIONS), 0);
+    if (retstat == -1 && errno != EEXIST) return NULL;
 
     // Load metadata and free blocks to memory
     load_metadata();
@@ -918,6 +950,8 @@ int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *f
     retstat = fstat(fi->fh, statbuf);
     if (retstat < 0)
 	retstat = log_error("bb_fgetattr fstat");
+
+    table_print(metadata, log_msg);
 
     if (S_ISREG(statbuf->st_mode)) {
         retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);

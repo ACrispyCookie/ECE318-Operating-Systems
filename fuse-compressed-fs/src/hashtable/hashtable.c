@@ -17,23 +17,23 @@ hash_element_t *table_add(hash_element_t **table, const unsigned char hash[SHA_D
 	return element;
 }
 
+int table_remove(hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH]) {
+	hash_element_t *element;
+
+	HASH_FIND_PTR(*table, hash, element);
+	if (element == NULL)
+		return 1;
+
+	HASH_DEL(*table, element);
+	free(element);
+	return 0;
+}
+
 hash_element_t *table_find(hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]) {
     hash_element_t *element;
     
 	HASH_FIND_PTR(table, hash, element);
     return element;
-}
-
-int table_remove(hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]) {
-	hash_element_t *element;
-
-	HASH_FIND_PTR(table, hash, element);
-	if (element == NULL)
-		return 1;
-
-	HASH_DEL(table, element);
-	free(element);
-	return 0;
 }
 
 void table_clear_foreach(hash_element_t *table, void (*func)(hash_element_t *)) {

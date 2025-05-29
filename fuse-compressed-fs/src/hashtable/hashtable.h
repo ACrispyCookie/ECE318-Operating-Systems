@@ -15,7 +15,7 @@ hash_element_t *table_add(hash_element_t **table, const unsigned char hash[SHA_D
 
 hash_element_t *table_find(hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]);
 
-int table_remove(hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]);
+int table_remove(hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH]);
 
 void table_clear_foreach(hash_element_t *table, void (*func)(hash_element_t *));
 
