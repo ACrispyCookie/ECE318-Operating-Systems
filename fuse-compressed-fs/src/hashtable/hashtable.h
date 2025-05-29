@@ -23,4 +23,6 @@ void table_clear(hash_element_t *table);
 
 void table_print(hash_element_t *table, void (*print_func)(const char *format, ...));
 
+void table_foreach_run(hash_element_t *table, int (*func)(void *, const hash_element_t *), void *func_args, int (*comparator)(void *, void *), unsigned long long int limit);
+
 #endif

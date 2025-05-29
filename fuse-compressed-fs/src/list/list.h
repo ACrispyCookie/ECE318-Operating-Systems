@@ -98,4 +98,9 @@ void list_destroy(list_t *list);
 */
 void list_destroy_foreach(list_t *list, void (*func)(node_t *));
 
+/*
+    Checks if the list is empty.
+*/
+int list_is_empty(list_t *list);
+
 #endif

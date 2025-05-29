@@ -17,7 +17,7 @@
 #define METADATA_REF_COUNT_SIZE 4
 #define METADATA_OFFSET_SIZE 4
 #define METADATA_FILE_ENTRY_SIZE (HASH_SIZE + METADATA_REF_COUNT_SIZE + METADATA_OFFSET_SIZE)
-#define DEFRAGMENT_MAX_UNUSED 2
+#define FRAGM_BLOCKS_LIMIT 100
 
 // File related
 #define BLOCKS_PATH "/blocks"
@@ -109,6 +109,30 @@ int add_reference_to_block(const unsigned char *buf, unsigned char hash[SHA_DIGE
     ERROR - on error
 */
 int remove_reference_from_block(const unsigned char hash[SHA_DIGEST_LENGTH]);
+
+/*  
+    Replaces a freed (destination) block from the blocks file with a still reachable (source) block.
+
+    Note:
+        The function handles the list of free blocks and the hash map enetries, it will make
+        sure that a block is freed thus placed correctly in list and will expect for that to be
+        the case for SUCCESS.
+
+    Parameters:
+    dest_offset - The offset of the destination block, to be replaced.
+    src_offset - The offset of the source block to replace the destination block with.
+    
+    Returns:
+    SUCCESS - on success
+    ERROR - on error
+*/
+int dup_and_free(int fd, unsigned int dest_offset, unsigned int src_offset);
+
+int rmv_free_cluster(int fd);
+
+int defragment_each(void* fd, const hash_element_t *curr);
+
+int defragment_block_file();
 
 /* ###################################################################################### */
 /* ############################### VIRTUAL FILE FUNCTIONS ############################### */

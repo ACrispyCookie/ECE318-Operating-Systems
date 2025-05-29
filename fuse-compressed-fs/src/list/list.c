@@ -157,3 +157,7 @@ static node_t *create_node(void *data) {
     new_node->data = data;
     return new_node;
 }
+
+int list_is_empty(list_t *list) {
+    return list->head->next == list->head;
+}

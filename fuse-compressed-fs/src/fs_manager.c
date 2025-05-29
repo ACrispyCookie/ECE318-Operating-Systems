@@ -204,6 +204,7 @@ int remove_block(const unsigned char hash[SHA_DIGEST_LENGTH])
     
     table_remove(&metadata, hash);
     list_add(free_blocks, block_offset);
+    defragment_block_file();
 
     return BLOCK_FOUND;
 }
@@ -242,6 +243,84 @@ int remove_reference_from_block(const unsigned char hash[SHA_DIGEST_LENGTH])
         remove_block(hash);
 
     return BLOCK_FOUND;
+}
+
+int dup_and_free(int fd, unsigned int dest_offset, unsigned int src_offset) {
+    unsigned char src_block[BLOCK_SIZE];
+    unsigned char dest_block[BLOCK_SIZE];
+    unsigned char src_hash[SHA_DIGEST_LENGTH];
+    unsigned char dest_hash[SHA_DIGEST_LENGTH];
+
+    // Floors the block offsets. A guard for offsets that are not the start of a block.
+    read_block(src_block, (src_offset / BLOCK_SIZE) * BLOCK_SIZE, BLOCK_SIZE);
+    read_block(dest_block, (dest_offset / BLOCK_SIZE) * BLOCK_SIZE, BLOCK_SIZE);
+    SHA1(src_block, BLOCK_SIZE, src_hash);
+    SHA1(dest_block, BLOCK_SIZE, dest_hash);
+
+    hash_element_t *dest_element = table_find(metadata, dest_hash);
+    hash_element_t *src_element = table_find(metadata, src_hash);
+
+    if (dest_element->ref_count != 0 || !list_remove(free_blocks, (void *)&dest_offset)) {
+        log_msg("Referenced block cannot be destroyed. This suggests a free blocks bug.\n");
+        return ERROR; 
+    }
+
+    if (src_element->ref_count == 0) {
+        log_msg("Freed block cannot be freed twice.\n");
+        return ERROR;
+    }
+
+    unsigned int src_block_offset = src_element->offset;
+    src_element->offset = dest_element->offset;
+    
+    // Free block exists, remove it from list
+    // List cannot be empty if this is called but just in case
+    if (list_is_empty(free_blocks)) {
+        log_msg("How did we get here? List is empty.. God help us.\n");
+        return ERROR;
+    }
+
+    // Overwrite dest block with src block and add to free block to list
+    log_syscall("pwrite", pwrite(blocks_fd, src_block, BLOCK_SIZE, dest_offset), 0);
+    list_add(free_blocks, (void *) &src_block_offset);
+
+    return SUCCESS;
+}
+
+int defragment_each(void* fd, const hash_element_t *curr) {
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    unsigned char block[BLOCK_SIZE];
+
+    if (list_is_empty(free_blocks)) {
+        log_msg("Warning: already defragmented. This suggests redundant/excesssive defragmentation calls.\n");
+        return SUCCESS;
+    }
+
+    // Replaces a freed (destination) block from the blocks file with a still reachable (source) block.
+    return dup_and_free(*((int *)fd), *((unsigned int *) free_blocks->head->next->data), curr->offset);
+}
+
+// int rmv_free_cluster(int fd, ) {
+// 	hash_element_t *curr, *tmp;
+//     int last_used_block = 0;
+
+//     HASH_ITER(hh, table, curr, temp) break;
+//     return log_syscall("ftruncate", ftruncate(fd, curr->offset * BLOCK_SIZE), 0);
+// }
+
+int defragment_block_file() {
+    ssize_t blocks_file_size, free_blocks_file_size;
+    float fragmentation_percentage;
+
+    blocks_file_size = get_virtual_file_size(blocks_fd);
+    free_blocks_file_size = get_virtual_file_size(free_blocks_fd);
+
+    fragmentation_percentage = free_blocks_file_size / blocks_file_size;
+
+    if (fragmentation_percentage > 0.1)
+        table_foreach_run(metadata, defragment_each, (void *) &blocks_fd, offset_comparator, 0);
+
+    return SUCCESS;
 }
 
 /* ###################################################################################### */

@@ -60,3 +60,18 @@ void table_print(hash_element_t *table, void (*print_func)(const char *format, .
 		print_func(": off %u, ref_count %u\n", s->offset, s->ref_count);
     }
 }
+
+void table_foreach_run(hash_element_t *table, int (*func)(void *, const hash_element_t *), void *func_args, int (*comparator)(void *, void *), unsigned long long int limit) {
+    hash_element_t *curr, *tmp;
+    unsigned long long int iter = 0;
+
+    HASH_ITER(hh, table, curr, tmp) {
+        if (func != NULL)
+			func(func_args, curr);
+
+		if (comparator != NULL && limit && (comparator((void *)&iter, (void *)&limit) == 0))
+			break;
+
+        iter++;
+    }
+}
