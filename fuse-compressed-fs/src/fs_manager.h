@@ -16,7 +16,7 @@
 // Metadata file related
 #define METADATA_REF_COUNT_SIZE 4
 #define METADATA_BLOCK_INDEX_SIZE 4
-#define DEFRAGMENT_MAX_UNUSED 2
+#define FRAGMENTATION_MAX_PERCENTAGE 0.1
 
 // File related
 #define BLOCKS_PATH "/blocks"
@@ -109,6 +109,16 @@ int add_reference_to_block(const unsigned char *buf, unsigned char hash[SHA_DIGE
     ERROR - on error
 */
 int remove_reference_from_block(const unsigned char hash[SHA_DIGEST_LENGTH]);
+
+/*
+    Checks if the fragmentation of the block repository file is above the allowed
+    fragmentation percentage threshold requires defragmentation and defragments it.
+
+    Returns:
+    SUCCESS - If defragmentation was complete or not necessary
+    ERROR - If fstat fails
+*/
+int check_and_defragment_blocks();
 
 /* ###################################################################################### */
 /* ############################### VIRTUAL FILE FUNCTIONS ############################### */
