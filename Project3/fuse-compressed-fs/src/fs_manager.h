@@ -17,6 +17,7 @@
 #define METADATA_REF_COUNT_SIZE 4
 #define METADATA_OFFSET_SIZE 4
 #define METADATA_FILE_ENTRY_SIZE (HASH_SIZE + METADATA_REF_COUNT_SIZE + METADATA_OFFSET_SIZE)
+#define DEFRAGMENT_MAX_UNUSED 2
 
 // File related
 #define BLOCKS_PATH "/blocks"
@@ -24,6 +25,7 @@
 #define METADATA_PATH "/metadata"
 #define USER_PATH "/user"
 #define STORAGE_FILES_PERMISSIONS 0664
+#define USER_FOLDER_PERMISSIONS 0774
 
 // Return codes
 #define ERROR -1
