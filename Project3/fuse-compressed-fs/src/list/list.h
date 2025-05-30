@@ -59,6 +59,19 @@ int list_add(list_t *list, void *data);
 int list_remove(list_t *list, void *data);
 
 /*
+    Removes the given node from the list.
+
+    Parameters:
+    list_t *list - The list to remove the node from.
+    node_t *data - The node of the list.
+
+    Returns:
+    0 if the node was removed successfully.
+    -1 if an error occurred.
+*/
+int list_remove_element(list_t *list, node_t *data);
+
+/*
     Removes the node in the given index from the list.
 
     Parameters:

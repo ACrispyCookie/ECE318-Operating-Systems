@@ -271,7 +271,7 @@ int check_and_defragment_blocks() {
 
     // Above max allowance, defragment repository
     block_index_t blocks_to_defrag_count = ((free_blocks_count - FRAGMENTATION_MAX_PERCENTAGE * repo_blocks_count)
-                                          / (1 - FRAGMENTATION_MAX_PERCENTAGE)) + 1;
+                                          / (1 - FRAGMENTATION_MAX_PERCENTAGE));
 
     // Moves the last used block to the first free block
     node_t *curr_node = free_blocks->head->prev;
@@ -279,7 +279,7 @@ int check_and_defragment_blocks() {
         // If this block is free remove it from list and move both pointers
         if (*((block_index_t *)curr_node->data) == (repo_block_index - i)) { 
             curr_node = curr_node->prev;
-            list_remove(free_blocks, curr_node->next);
+            list_remove_element(free_blocks, curr_node->next);
         } else { // This block needs to be moved to the first free in the repository
             copy_block_to_first_free(repo_block_index - i);
         }
