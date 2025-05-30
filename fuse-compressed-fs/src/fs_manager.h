@@ -97,7 +97,7 @@ void save_free_blocks();
     BLOCK_FOUND - If the block was found inside the repository
     ERROR - on error
 */
-int add_reference_to_block(const unsigned char *buf, unsigned char hash[SHA_DIGEST_LENGTH]);
+int add_reference_to_block(const unsigned char *buf, unsigned char hash[HASH_SIZE]);
 
 /*
     Tries to find a block with the given hash and if it
@@ -111,17 +111,27 @@ int add_reference_to_block(const unsigned char *buf, unsigned char hash[SHA_DIGE
     BLOCK_NOT_FOUND - If the block was not found.
     ERROR - on error
 */
-int remove_reference_from_block(const unsigned char hash[SHA_DIGEST_LENGTH]);
+int remove_reference_from_block(const unsigned char hash[HASH_SIZE]);
 
 /*
     Checks if the fragmentation of the block repository file is above the allowed
-    fragmentation percentage threshold requires defragmentation and defragments it.
+    fragmentation percentage threshold and defragments it.
 
     Returns:
     SUCCESS - If defragmentation was complete or not necessary
     ERROR - If fstat fails
 */
 int check_and_defragment_blocks();
+
+/*
+    Moves a block from the given src_index to the first
+    free block on the repository.
+
+    Returns:
+    SUCCESS - on success
+    ERROR - on error
+*/
+int copy_block_to_first_free(block_index_t src_index);
 
 /* ###################################################################################### */
 /* ############################### VIRTUAL FILE FUNCTIONS ############################### */
