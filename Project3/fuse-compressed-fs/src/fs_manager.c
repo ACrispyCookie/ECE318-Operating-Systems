@@ -192,9 +192,8 @@ int remove_block(const unsigned char hash[HASH_SIZE])
     table_remove(&metadata, hash);
     list_add(free_blocks, block_index);
 
-    // TODO: call defrag - WIP
-    // if (check_and_defragment_blocks() < 0)
-    //     return ERROR;
+    if (check_and_defragment_blocks() < 0)
+        return ERROR;
 
     return BLOCK_FOUND;
 }
@@ -235,50 +234,55 @@ int remove_reference_from_block(const unsigned char hash[HASH_SIZE])
     return BLOCK_FOUND;
 }
 
+int copy_block_to_first_free(block_index_t src_index) {
+    unsigned char src_block[BLOCK_SIZE];
+    unsigned char src_hash[SHA_DIGEST_LENGTH];
+    int retstat;
+
+    retstat = read_block(src_block, src_index * BLOCK_SIZE, BLOCK_SIZE);
+    if (retstat < 0) return ERROR;
+    
+    SHA1(src_block, BLOCK_SIZE, src_hash);
+    block_index_t index = *((block_index_t *) free_blocks->head->next->data);
+    
+    retstat = create_block(src_block, src_hash);
+    if (retstat < 0) return ERROR;
+    
+    hash_element_t *src_element = table_find(metadata, src_hash);
+    src_element->block_index = index;
+    
+    return SUCCESS;
+}
+
 int check_and_defragment_blocks() {
     ssize_t blocks_filesize;
-    struct stat statbuf;
-    unsigned int repo_blocks_count, free_blocks_count;
+    block_index_t repo_blocks_count, free_blocks_count, repo_block_index;
+    int retstat;
 
-    // Get the number of the blocks in the free blocks list and the repository
-    int retstat = log_syscall("lstat", fstat(blocks_fd, &statbuf), 0);
-    if (retstat < 0)
-        return ERROR;
-
-    blocks_filesize = statbuf.st_size;
+    blocks_filesize = get_virtual_file_size(blocks_fd);
 
     repo_blocks_count = blocks_filesize / BLOCK_SIZE;
     free_blocks_count = free_blocks->size;
+    repo_block_index = repo_blocks_count - 1;
 
     // Compare the percentage of the real internal defragmentation with the max allowed
-    if (free_blocks_count > 0 && ((float)free_blocks_count / repo_blocks_count) <= FRAGMENTATION_MAX_PERCENTAGE)
+    if (free_blocks_count == 0 || ((float)free_blocks_count / repo_blocks_count) <= FRAGMENTATION_MAX_PERCENTAGE)
         return SUCCESS;
 
     // Above max allowance, defragment repository
-    unsigned int blocks_to_defrag_count = ((free_blocks_count - FRAGMENTATION_MAX_PERCENTAGE * repo_blocks_count)
+    block_index_t blocks_to_defrag_count = ((free_blocks_count - FRAGMENTATION_MAX_PERCENTAGE * repo_blocks_count)
                                           / (1 - FRAGMENTATION_MAX_PERCENTAGE)) + 1;
-    unsigned char buf[BLOCK_SIZE];
-    unsigned char hash[SHA_DIGEST_LENGTH];
-    block_index_t index;
-    hash_element_t* hashtable_element;
 
-    // For each used block in the end of the blocks repository, move it to the up-most unused space
+    // Moves the last used block to the first free block
+    node_t *curr_node = free_blocks->head->prev;
     for (int i = 0; i < blocks_to_defrag_count; i++) {
-        // TODO: get the bottom-most used block
-        // Read block and get the hash
-        read_block(buf, (repo_blocks_count - free_blocks_count - i - 1) * BLOCK_SIZE, BLOCK_SIZE);
-        SHA1(buf, BLOCK_SIZE, hash);
-
-        index = *((block_index_t *) free_blocks->head->next->data);
-
-        // Copy/re-create block, automatically selects top-most empty space
-        retstat = create_block(buf, hash);
-        if (retstat < 0)
-            return ERROR;
-
-        // Update the block index in the hashtable
-        hashtable_element = table_find(metadata, hash);
-        hashtable_element->block_index = index;
+        // If this block is free remove it from list and move both pointers
+        if (*((block_index_t *)curr_node->data) == (repo_block_index - i)) { 
+            curr_node = curr_node->prev;
+            list_remove(free_blocks, curr_node->next);
+        } else { // This block needs to be moved to the first free in the repository
+            copy_block_to_first_free(repo_block_index - i);
+        }
     }
 
     // Truncate blocks repository by the amount of blocks defragmented
