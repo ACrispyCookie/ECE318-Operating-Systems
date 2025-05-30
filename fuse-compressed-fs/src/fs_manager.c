@@ -61,7 +61,7 @@ static ssize_t write_hash_to_file(int fd, unsigned char *hash, off_t block_offse
     the total read bytes - on success
     ERROR - on error
 */
-static ssize_t read_block(unsigned char buf[BLOCK_SIZE], off_t block_offset, int byte_count);
+static ssize_t read_block(unsigned char buf[BLOCK_SIZE], off_t block_offset, ssize_t byte_count);
 
 /*
     Saves a metadata entry in the metadata file.
@@ -198,7 +198,7 @@ int remove_block(const unsigned char hash[HASH_SIZE])
     return BLOCK_FOUND;
 }
 
-static ssize_t read_block(unsigned char buf[BLOCK_SIZE], off_t block_offset, int byte_count) {
+static ssize_t read_block(unsigned char buf[BLOCK_SIZE], off_t block_offset, ssize_t byte_count) {
     int retstat = log_syscall("pread", pread(blocks_fd, buf, byte_count, block_offset), 0);
     return retstat < 0 ? ERROR : retstat;
 }
@@ -275,7 +275,7 @@ int check_and_defragment_blocks() {
 
     // Moves the last used block to the first free block
     node_t *curr_node = free_blocks->head->prev;
-    for (int i = 0; i < blocks_to_defrag_count; i++) {
+    for (block_index_t i = 0; i < blocks_to_defrag_count; i++) {
         // If this block is free remove it from list and move both pointers
         if (*((block_index_t *)curr_node->data) == (repo_block_index - i)) { 
             curr_node = curr_node->prev;
@@ -348,14 +348,14 @@ ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block
     return retstat;
 }
 
-ssize_t read_blocks_from_file(int fd, char *buf, block_index_t start_index, int block_count) {
+ssize_t read_blocks_from_file(int fd, char *buf, block_index_t start_index, block_count_t block_count) {
     int retstat;
     if (block_count <= 0)
         return 0;
     ssize_t total_read = 0;
     off_t virtual_file_offset = VIRTFILE_METADATA_SIZE + start_index * VIRTFILE_PTR_SIZE;
 
-    for (int i = 0; i < block_count; i++, virtual_file_offset += VIRTFILE_PTR_SIZE) {
+    for (block_count_t i = 0; i < block_count; i++, virtual_file_offset += VIRTFILE_PTR_SIZE) {
         unsigned char hash[HASH_SIZE];
         retstat = read_hash_from_file(fd, hash, virtual_file_offset, 1);
         if (retstat < 0) return ERROR;
@@ -370,14 +370,15 @@ ssize_t read_blocks_from_file(int fd, char *buf, block_index_t start_index, int 
 }
 
 ssize_t write_block_to_file(int fd, const char *buf, block_index_t block_index, block_offset_t block_offset, short byte_count) {
-    int retstat, total_written = 0;
+    int retstat;
+    long long total_written = 0;
     if (byte_count <= 0)
         return 0;
 
     unsigned char new_block[BLOCK_SIZE];
     unsigned char old_hash[HASH_SIZE], new_hash[HASH_SIZE];
     off_t virtual_file_offset = VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE;
-    int old_block_exists;
+    short old_block_exists;
 
     // Read current block contents in the current block_index 
     retstat = read_hash_from_file(fd, old_hash, virtual_file_offset, 1);
@@ -416,13 +417,13 @@ ssize_t write_block_to_file(int fd, const char *buf, block_index_t block_index, 
     return byte_count;
 }
 
-ssize_t write_blocks_to_file(int fd, const char *buf, block_index_t start_index, int block_count) {
+ssize_t write_blocks_to_file(int fd, const char *buf, block_index_t start_index, block_count_t block_count) {
     int retstat;
     if (block_count <= 0)
         return 0;
     off_t virtual_file_offset = VIRTFILE_METADATA_SIZE + start_index * VIRTFILE_PTR_SIZE;
 
-    for (int i = 0; i < block_count; i++, virtual_file_offset += VIRTFILE_PTR_SIZE) {
+    for (block_count_t i = 0; i < block_count; i++, virtual_file_offset += VIRTFILE_PTR_SIZE) {
         unsigned char old_hash[HASH_SIZE], new_hash[HASH_SIZE];
         retstat = read_hash_from_file(fd, old_hash, virtual_file_offset, 1);
         if (retstat < 0) return ERROR;
@@ -468,8 +469,8 @@ int zeropad_file(int fd, ssize_t new_size) {
     if (retstat == ERROR) return -1;
 
     // If not other zero blocks are needed
-    int bytes_to_pad = MAX(new_size - (file_size + BLOCK_SIZE - last_block_size), 0);
-    int zero_blocks = bytes_to_pad / BLOCK_SIZE + (bytes_to_pad % BLOCK_SIZE != 0);
+    long long bytes_to_pad = MAX(new_size - (file_size + BLOCK_SIZE - last_block_size), 0);
+    block_count_t zero_blocks = bytes_to_pad / BLOCK_SIZE + (bytes_to_pad % BLOCK_SIZE != 0);
     if (zero_blocks == 0)
         return SUCCESS;
 
@@ -480,7 +481,7 @@ int zeropad_file(int fd, ssize_t new_size) {
 
     // Write zero blocks to the file
     ssize_t offset = get_virtual_file_size(fd);
-    for (int i = 0; i < zero_blocks; i++, offset += VIRTFILE_PTR_SIZE) {
+    for (block_count_t i = 0; i < zero_blocks; i++, offset += VIRTFILE_PTR_SIZE) {
         retstat = write_hash_to_file(fd, hash, offset, 1);
         if (retstat <= 0)
             break;
