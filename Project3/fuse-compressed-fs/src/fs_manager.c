@@ -176,7 +176,6 @@ int create_block(const unsigned char *buf, unsigned char new_hash[HASH_SIZE])
     retstat = log_syscall("pwrite", pwrite(blocks_fd, buf, BLOCK_SIZE, new_block_offset), 0);
     if (retstat < 0) return ERROR;
     table_add(&metadata, new_hash, 1, new_block_offset / BLOCK_SIZE);
-    table_print(metadata, log_msg);
 
     return SUCCESS;
 }

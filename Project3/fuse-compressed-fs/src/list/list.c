@@ -53,24 +53,6 @@ int list_add(list_t *list, void *data) {
     return LIST_SUCCESS;
 }
 
-static int list_add_unsorted(list_t *list, void *data) {
-    if (list == NULL) 
-        return LIST_ERROR;
-    if (list_find(list, data, NULL) != NULL)
-        return LIST_ALREADY;
-    
-    node_t *node_to_add = create_node(data);
-    if (node_to_add == NULL)
-        return LIST_ERROR;
-
-    node_to_add->next = list->head->next;
-    node_to_add->prev = list->head;
-    list->head->next->prev = node_to_add;
-    list->head->next = node_to_add;
-    list->size++;
-    return LIST_SUCCESS;
-}
-
 int list_remove(list_t *list, void *data) {
     if (list == NULL)
         return LIST_ERROR;

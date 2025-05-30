@@ -5,6 +5,9 @@
 #include "list/list.h"
 #include "hashtable/hashtable.h"
 
+// Block repository related
+#define BLOCK_BUFFER 1024
+
 // General sizes
 #define BLOCK_SIZE 4096
 #define HASH_SIZE SHA_DIGEST_LENGTH
