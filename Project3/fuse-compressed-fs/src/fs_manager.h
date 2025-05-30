@@ -47,6 +47,7 @@
 typedef unsigned int ref_count_t;
 typedef unsigned int block_index_t;
 typedef unsigned short block_offset_t;
+typedef long block_count_t;
 
 /* File descriptor for the blocks repository */
 extern int blocks_fd, free_blocks_fd, metadata_fd;
@@ -200,7 +201,7 @@ ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block
     the total read bytes - on success 
     ERROR - on error
 */
-ssize_t read_blocks_from_file(int fd, char *buf, block_index_t start_index, int block_count);
+ssize_t read_blocks_from_file(int fd, char *buf, block_index_t start_index, block_count_t block_count);
 
 /*
     Write byte_count bytes to a file at a given block and offset. 
@@ -231,7 +232,7 @@ ssize_t write_block_to_file(int fd, const char *buf, block_index_t block_index, 
     the total written bytes - on success 
     ERROR - on error
 */
-ssize_t write_blocks_to_file(int fd, const char *buf, block_index_t start_index, int block_count);
+ssize_t write_blocks_to_file(int fd, const char *buf, block_index_t start_index, block_count_t block_count);
 
 /*
     Adds zero padding to file until it reaches
