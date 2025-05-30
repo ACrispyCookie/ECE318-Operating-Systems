@@ -69,6 +69,22 @@ int list_remove(list_t *list, void *data) {
     return LIST_SUCCESS;
 }
 
+int list_remove_element(list_t *list, node_t *element) {
+    if (list == NULL)
+        return LIST_ERROR;
+
+    node_t *previous_node = element->prev;
+    node_t *found_node = element;
+    if (found_node == NULL)
+        return LIST_ALREADY;
+    
+    previous_node->next = found_node->next; 
+    found_node->next->prev = previous_node;
+    free(found_node);
+    list->size--;
+    return LIST_SUCCESS;
+}
+
 void *list_remove_index(list_t *list, unsigned int index) {
     if (list == NULL)
         return NULL;
