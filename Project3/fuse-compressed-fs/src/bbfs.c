@@ -24,7 +24,7 @@
 #include "config.h"
 #include "params.h"
 #include "fs_manager.h"
-#include "hashtable/hashtable.h"
+#include "blocks_hashtable/blocks_hashtable.h"
 #include "list/list.h"
 
 #include <ctype.h>
@@ -158,6 +158,8 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 	    retstat = log_syscall("mkfifo", mkfifo(fpath, mode), 0);
 	else if (!S_ISREG(mode))
 	    retstat = log_syscall("mknod", mknod(fpath, mode, dev), 0);
+
+    // retstat = create_user_file(fpath);
 
     // Write metadata
     retstat = log_syscall("open", fd = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode), 0);

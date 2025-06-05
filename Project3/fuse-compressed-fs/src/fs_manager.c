@@ -11,7 +11,7 @@ int blocks_fd, free_blocks_fd, metadata_fd;
 list_t *free_blocks;
 
 /* Metadata hash table */
-hash_element_t *metadata;
+blocks_hash_element_t *metadata;
 
 void sha1_print(unsigned char hash[HASH_SIZE]) {
     log_msg("SHA1 hash: ");
@@ -66,7 +66,7 @@ static ssize_t read_block(unsigned char buf[BLOCK_SIZE], off_t block_offset, int
 /*
     Saves a metadata entry in the metadata file.
 */
-static void save_metadata_element(hash_element_t *element);
+static void save_metadata_element(blocks_hash_element_t *element);
 
 /*
     Saves a free block in the free blocks file
@@ -103,7 +103,7 @@ void load_metadata()
         log_syscall("read", read(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE), 0);
         log_syscall("read", read(metadata_fd, &block_index, METADATA_BLOCK_INDEX_SIZE), 0);
 
-        table_add(&metadata, hash, ref_count, block_index);
+        blocks_table_add(&metadata, hash, ref_count, block_index);
     }
 }
 
@@ -124,7 +124,7 @@ void load_free_blocks()
 void save_metadata() {
     log_syscall("ftruncate", ftruncate(metadata_fd, 0), 0);
     lseek(metadata_fd, 0, SEEK_SET);
-    table_clear_foreach(metadata, save_metadata_element);
+    blocks_blocks_table_clear_foreach(metadata, save_metadata_element);
     close(metadata_fd);
 }
 
@@ -135,7 +135,7 @@ void save_free_blocks() {
     close(free_blocks_fd);
 }
 
-static void save_metadata_element(hash_element_t *element) {
+static void save_metadata_element(blocks_hash_element_t *element) {
     unsigned char hash[HASH_SIZE];
     memcpy(hash, element->hash, HASH_SIZE);
     ref_count_t ref_count = element->ref_count;
@@ -175,21 +175,21 @@ int create_block(const unsigned char *buf, unsigned char new_hash[HASH_SIZE])
     // Add the hash of the new block in the hashtable
     retstat = log_syscall("pwrite", pwrite(blocks_fd, buf, BLOCK_SIZE, new_block_offset), 0);
     if (retstat < 0) return ERROR;
-    table_add(&metadata, new_hash, 1, new_block_offset / BLOCK_SIZE);
+    blocks_table_add(&metadata, new_hash, 1, new_block_offset / BLOCK_SIZE);
 
     return SUCCESS;
 }
 
 int remove_block(const unsigned char hash[HASH_SIZE]) 
 {
-    hash_element_t *element = table_find(metadata, hash);
+    blocks_hash_element_t *element = blocks_table_find(metadata, hash);
     if (element == NULL)
         return BLOCK_NOT_FOUND;
     
     block_index_t *block_index = malloc(sizeof(block_index_t *));
     *block_index = element->block_index;
     
-    table_remove(&metadata, hash);
+    blocks_table_remove(&metadata, hash);
     list_add(free_blocks, block_index);
 
     if (check_and_defragment_blocks() < 0)
@@ -207,7 +207,7 @@ int add_reference_to_block(const unsigned char *buf, unsigned char hash[HASH_SIZ
 {
     SHA1(buf, BLOCK_SIZE, hash);
 
-    hash_element_t *element = table_find(metadata, hash);
+    blocks_hash_element_t *element = blocks_table_find(metadata, hash);
     if (element == NULL) {
         int retstat = create_block(buf, hash);
         return retstat < 0 ? ERROR : BLOCK_CREATED;
@@ -220,7 +220,7 @@ int add_reference_to_block(const unsigned char *buf, unsigned char hash[HASH_SIZ
 
 int remove_reference_from_block(const unsigned char hash[HASH_SIZE]) 
 {
-    hash_element_t *element = table_find(metadata, hash);
+    blocks_hash_element_t *element = blocks_table_find(metadata, hash);
     if (element == NULL)
         return BLOCK_NOT_FOUND;
     
@@ -248,7 +248,7 @@ int copy_block_to_first_free(block_index_t src_index) {
     retstat = create_block(src_block, src_hash);
     if (retstat < 0) return ERROR;
     
-    hash_element_t *src_element = table_find(metadata, src_hash);
+    blocks_hash_element_t *src_element = blocks_table_find(metadata, src_hash);
     src_element->block_index = index;
     
     return SUCCESS;
@@ -298,6 +298,22 @@ int check_and_defragment_blocks() {
 /* ############################### VIRTUAL FILE FUNCTIONS ############################### */
 /* ###################################################################################### */
 
+void load_files_hashmap() {
+    
+}
+
+// ssize_t create_user_file(char* fpath) {
+//     uuid_t uuid;
+//     char uuid_str[37];
+
+//     const char *filename = basename((char *)fpath);
+
+//     uuid_generate(uuid);
+//     uuid_unparse(uuid, uuid_str);
+
+    
+// }
+
 ssize_t get_virtual_file_size(int fd) {
     struct stat statbuf;
     int retstat = log_syscall("lstat", fstat(fd, &statbuf), 0);
@@ -341,7 +357,7 @@ ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block
     retstat = read_hash_from_file(fd, hash, VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE, 1);
     if (retstat < 0) return ERROR;
 
-    block_index_t index = table_find(metadata, hash)->block_index;
+    block_index_t index = blocks_table_find(metadata, hash)->block_index;
     retstat = read_block((unsigned char *) buf, index * BLOCK_SIZE + block_offset, MIN(byte_count, BLOCK_SIZE - block_offset));
     if (retstat < 0) return ERROR;
 
@@ -360,7 +376,7 @@ ssize_t read_blocks_from_file(int fd, char *buf, block_index_t start_index, int 
         retstat = read_hash_from_file(fd, hash, virtual_file_offset, 1);
         if (retstat < 0) return ERROR;
 
-        block_index_t index = table_find(metadata, hash)->block_index;
+        block_index_t index = blocks_table_find(metadata, hash)->block_index;
         retstat = read_block((unsigned char *) buf + total_read, index * BLOCK_SIZE, BLOCK_SIZE);
         if (retstat < 0) return ERROR;
         else total_read += retstat;
@@ -386,7 +402,7 @@ ssize_t write_block_to_file(int fd, const char *buf, block_index_t block_index, 
     // Read previous block content or fill it with zeros
     old_block_exists = (retstat != 0);
     if (old_block_exists) {
-        block_index_t index = table_find(metadata, old_hash)->block_index;
+        block_index_t index = blocks_table_find(metadata, old_hash)->block_index;
         retstat = read_block(new_block, index * BLOCK_SIZE, BLOCK_SIZE);
         if (retstat < 0) return ERROR;
     } else {
@@ -486,7 +502,7 @@ int zeropad_file(int fd, ssize_t new_size) {
             break;
     }
 
-    hash_element_t *zero_block_hash = table_find(metadata, hash);
+    blocks_hash_element_t *zero_block_hash = blocks_table_find(metadata, hash);
     zero_block_hash->ref_count += zero_blocks - 1;
 
     return retstat < 0 ? ERROR : SUCCESS;

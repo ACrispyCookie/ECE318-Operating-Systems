@@ -3,7 +3,7 @@
 
 #include <openssl/sha.h>
 #include "list/list.h"
-#include "hashtable/hashtable.h"
+#include "blocks_hashtable/blocks_hashtable.h"
 
 // Block repository related
 #define BLOCK_BUFFER 1024
@@ -55,7 +55,7 @@ extern int blocks_fd, free_blocks_fd, metadata_fd;
 extern list_t *free_blocks;
 
 /* Metadata hash table */
-extern hash_element_t *metadata;
+extern blocks_hash_element_t *metadata;
 
 /* ###################################################################################### */
 /* ################################# LOAD/SAVE FUNCTIONS ################################ */
@@ -136,6 +136,12 @@ int copy_block_to_first_free(block_index_t src_index);
 /* ###################################################################################### */
 /* ############################### VIRTUAL FILE FUNCTIONS ############################### */
 /* ###################################################################################### */
+
+/*
+    Get the path of the file to be created, add the related metadata
+    to the hashmap 
+*/
+ssize_t create_user_file(char* fpath);
 
 /*
     Get real size of a virtual file.
