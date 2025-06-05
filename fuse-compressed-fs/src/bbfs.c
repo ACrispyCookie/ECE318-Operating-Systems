@@ -76,7 +76,8 @@ static void bb_fullpath(char fpath[PATH_MAX], const char *path)
  */
 int bb_getattr(const char *path, struct stat *statbuf)
 {
-    int retstat, fd;
+    ssize_t retstat;
+    int fd;
     char fpath[PATH_MAX];
     
     log_msg("\nbb_getattr(path=\"%s\", statbuf=0x%08x)\n",
@@ -141,9 +142,10 @@ int bb_readlink(const char *path, char *link, size_t size)
 // shouldn't that comment be "if" there is no.... ?
 int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
-    int retstat, fd;
+    ssize_t retstat;
+    int fd;
     char fpath[PATH_MAX];
-    unsigned short int last_block_size = 0;
+    block_offset_t last_block_size = 0;
     
     log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n",
 	  path, mode, dev);
@@ -165,7 +167,7 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
     retstat = log_syscall("open", fd = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
     retstat = write_metadata_to_file(fd, (unsigned char *) &last_block_size);
     retstat = log_syscall("close", close(fd), 0);
-
+    
     return retstat;
 }
 
@@ -366,10 +368,10 @@ int bb_open(const char *path, struct fuse_file_info *fi)
  */
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {   
-    unsigned int block_count; // Total blocks to read
-    unsigned int first_offset; // Offset in the first block
-    unsigned int block_hash_position; // Position of the block hash inside the virtual file
-    unsigned int total_read = 0; // Return status and total bytes read
+    block_count_t block_count; // Total blocks to read
+    block_offset_t first_offset; // Offset in the first block
+    block_index_t block_hash_position; // Position of the block hash inside the virtual file
+    ssize_t total_read = 0; // Return status and total bytes read
     int retstat;
 
     log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
@@ -410,12 +412,12 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
 int bb_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     char fpath[PATH_MAX];
-    unsigned int block_count; // Total blocks to read
-    unsigned int first_offset; // Offset in the first block
-    unsigned int file_size; // File size in bytes
-    unsigned int block_hash_position; // Position of the block hash inside the virtual file
-    unsigned int last_block_size, new_last_block_size; // New last block size
-    unsigned int total_write = 0; // Return status and total bytes written
+    block_count_t block_count; // Total blocks to read
+    block_offset_t first_offset; // Offset in the first block
+    ssize_t  file_size; // File size in bytes
+    block_index_t  block_hash_position; // Position of the block hash inside the virtual file
+    block_offset_t last_block_size, new_last_block_size; // New last block size
+    ssize_t total_write = 0; // Return status and total bytes written
     int retstat;
 
     log_msg("\nbb_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n", path, buf, size, offset, fi);
