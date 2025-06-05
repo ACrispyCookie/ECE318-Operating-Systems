@@ -1,9 +1,9 @@
-#include "hashtable.h"
+#include "blocks_hashtable.h"
 #include "log.h"
 #include <stdio.h>
 
-hash_element_t *table_add(hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int block_index) {
-	hash_element_t *element;
+blocks_hash_element_t *blocks_table_add(blocks_hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH], unsigned int ref_count, unsigned int block_index) {
+	blocks_hash_element_t *element;
 
 	HASH_FIND_PTR(*table, hash, element);
 	if (element != NULL)
@@ -17,8 +17,8 @@ hash_element_t *table_add(hash_element_t **table, const unsigned char hash[SHA_D
 	return element;
 }
 
-int table_remove(hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH]) {
-	hash_element_t *element;
+int blocks_table_remove(blocks_hash_element_t **table, const unsigned char hash[SHA_DIGEST_LENGTH]) {
+	blocks_hash_element_t *element;
 
 	HASH_FIND_PTR(*table, hash, element);
 	if (element == NULL)
@@ -29,15 +29,15 @@ int table_remove(hash_element_t **table, const unsigned char hash[SHA_DIGEST_LEN
 	return 0;
 }
 
-hash_element_t *table_find(hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]) {
-    hash_element_t *element;
+blocks_hash_element_t *blocks_table_find(blocks_hash_element_t *table, const unsigned char hash[SHA_DIGEST_LENGTH]) {
+    blocks_hash_element_t *element;
     
 	HASH_FIND_PTR(table, hash, element);
     return element;
 }
 
-void table_clear_foreach(hash_element_t *table, void (*func)(hash_element_t *)) {
-	hash_element_t *curr, *tmp;
+void blocks_blocks_table_clear_foreach(blocks_hash_element_t *table, void (*func)(blocks_hash_element_t *)) {
+	blocks_hash_element_t *curr, *tmp;
 
 	HASH_ITER(hh, table, curr, tmp) {
 		if (func != NULL) func(curr);
@@ -46,12 +46,12 @@ void table_clear_foreach(hash_element_t *table, void (*func)(hash_element_t *)) 
 	}
 }
 
-void table_clear(hash_element_t *table) {
-	table_clear_foreach(table, NULL);
+void blocks_table_clear(blocks_hash_element_t *table) {
+	blocks_blocks_table_clear_foreach(table, NULL);
 }
 
-void table_print(hash_element_t *table, void (*print_func)(const char *format, ...)) {
-    hash_element_t *s;
+void blocks_table_print(blocks_hash_element_t *table, void (*print_func)(const char *format, ...)) {
+    blocks_hash_element_t *s;
 
     for (s = table; s != NULL; s = s->hh.next) {
 		print_func("hash ");
