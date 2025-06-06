@@ -1,17 +1,22 @@
 #include "fs_manager.h"
 #include "log.h"
+#include <limits.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/stat.h>
 
 /* File descriptor for the blocks repository */
-int blocks_fd, free_blocks_fd, metadata_fd;
+int blocks_fd, free_blocks_fd, blocks_metadata_fd;
 
 /* List of free blocks */
 list_t *free_blocks;
 
 /* Metadata hash table */
-blocks_hash_element_t *metadata;
+blocks_hash_element_t *blocks_metadata;
+
+/* Files tree structure metadata table */
+tree_hash_element_t *tree_metadata;
 
 void sha1_print(unsigned char hash[HASH_SIZE]) {
     log_msg("SHA1 hash: ");
@@ -66,7 +71,7 @@ static ssize_t read_block(unsigned char buf[BLOCK_SIZE], off_t block_offset, ssi
 /*
     Saves a metadata entry in the metadata file.
 */
-static void save_metadata_element(blocks_hash_element_t *element);
+static void save_blocks_metadata_element(blocks_hash_element_t *element);
 
 /*
     Saves a free block in the free blocks file
@@ -89,21 +94,21 @@ static int index_comparator(void *num1, void *num2) {
 /* ################################# LOAD/SAVE FUNCTIONS ################################ */
 /* ###################################################################################### */
 
-void load_metadata() 
+void load_blocks_metadata() 
 {
     unsigned char hash[HASH_SIZE];
     ref_count_t ref_count;
     block_index_t block_index;
 
     while(1) {
-        int read_res = log_syscall("read", read(metadata_fd, hash, HASH_SIZE), 0);
+        int read_res = log_syscall("read", read(blocks_metadata_fd, hash, HASH_SIZE), 0);
         if (read_res <= 0) 
             return;
 
-        log_syscall("read", read(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE), 0);
-        log_syscall("read", read(metadata_fd, &block_index, METADATA_BLOCK_INDEX_SIZE), 0);
+        log_syscall("read", read(blocks_metadata_fd, &ref_count, BLOCKS_METADATA_REF_COUNT_SIZE), 0);
+        log_syscall("read", read(blocks_metadata_fd, &block_index, BLOCKS_METADATA_BLOCK_INDEX_SIZE), 0);
 
-        blocks_table_add(&metadata, hash, ref_count, block_index);
+        blocks_table_add(&blocks_metadata, hash, ref_count, block_index);
     }
 }
 
@@ -113,7 +118,7 @@ void load_free_blocks()
 
     while(1) {
         block_index_t *block_index = malloc(sizeof(block_index_t));
-        int read_res = log_syscall("read", read(free_blocks_fd, block_index, METADATA_BLOCK_INDEX_SIZE), 0);
+        int read_res = log_syscall("read", read(free_blocks_fd, block_index, BLOCKS_METADATA_BLOCK_INDEX_SIZE), 0);
 
         if (read_res <= 0)
             return;
@@ -121,11 +126,11 @@ void load_free_blocks()
     }
 }
 
-void save_metadata() {
-    log_syscall("ftruncate", ftruncate(metadata_fd, 0), 0);
-    lseek(metadata_fd, 0, SEEK_SET);
+void save_blocks_metadata() {
+    log_syscall("ftruncate", ftruncate(blocks_metadata_fd, 0), 0);
+    lseek(blocks_metadata_fd, 0, SEEK_SET);
     blocks_blocks_table_clear_foreach(metadata, save_metadata_element);
-    close(metadata_fd);
+    close(blocks_metadata_fd);
 }
 
 void save_free_blocks() {
@@ -141,14 +146,14 @@ static void save_metadata_element(blocks_hash_element_t *element) {
     ref_count_t ref_count = element->ref_count;
     block_index_t block_index = element->block_index;
 
-    log_syscall("write", write(metadata_fd, hash, HASH_SIZE), 0);
-    log_syscall("write", write(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE), 0);
-    log_syscall("write", write(metadata_fd, &block_index, METADATA_BLOCK_INDEX_SIZE), 0);
+    log_syscall("write", write(blocks_metadata_fd, hash, HASH_SIZE), 0);
+    log_syscall("write", write(blocks_metadata_fd, &ref_count, BLOCKS_METADATA_REF_COUNT_SIZE), 0);
+    log_syscall("write", write(blocks_metadata_fd, &block_index, BLOCKS_METADATA_BLOCK_INDEX_SIZE), 0);
 }
 
 static void save_free_block(node_t *node) {
     block_index_t *block_index = (block_index_t *) node->data;
-    log_syscall("write", write(free_blocks_fd, block_index, METADATA_BLOCK_INDEX_SIZE), 0);
+    log_syscall("write", write(free_blocks_fd, block_index, BLOCKS_METADATA_BLOCK_INDEX_SIZE), 0);
     free(block_index);
 }
 
@@ -175,21 +180,21 @@ int create_block(const unsigned char *buf, unsigned char new_hash[HASH_SIZE])
     // Add the hash of the new block in the hashtable
     retstat = log_syscall("pwrite", pwrite(blocks_fd, buf, BLOCK_SIZE, new_block_offset), 0);
     if (retstat < 0) return ERROR;
-    blocks_table_add(&metadata, new_hash, 1, new_block_offset / BLOCK_SIZE);
+    blocks_table_add(&blocks_metadata, new_hash, 1, new_block_offset / BLOCK_SIZE);
 
     return SUCCESS;
 }
 
 int remove_block(const unsigned char hash[HASH_SIZE]) 
 {
-    blocks_hash_element_t *element = blocks_table_find(metadata, hash);
+    blocks_hash_element_t *element = blocks_table_find(blocks_metadata, hash);
     if (element == NULL)
         return BLOCK_NOT_FOUND;
     
     block_index_t *block_index = malloc(sizeof(block_index_t *));
     *block_index = element->block_index;
     
-    blocks_table_remove(&metadata, hash);
+    blocks_table_remove(&blocks_metadata, hash);
     list_add(free_blocks, block_index);
 
     if (check_and_defragment_blocks() < 0)
@@ -207,7 +212,7 @@ int add_reference_to_block(const unsigned char *buf, unsigned char hash[HASH_SIZ
 {
     SHA1(buf, BLOCK_SIZE, hash);
 
-    blocks_hash_element_t *element = blocks_table_find(metadata, hash);
+    blocks_hash_element_t *element = blocks_table_find(blocks_metadata, hash);
     if (element == NULL) {
         int retstat = create_block(buf, hash);
         return retstat < 0 ? ERROR : BLOCK_CREATED;
@@ -220,7 +225,7 @@ int add_reference_to_block(const unsigned char *buf, unsigned char hash[HASH_SIZ
 
 int remove_reference_from_block(const unsigned char hash[HASH_SIZE]) 
 {
-    blocks_hash_element_t *element = blocks_table_find(metadata, hash);
+    blocks_hash_element_t *element = blocks_table_find(blocks_metadata, hash);
     if (element == NULL)
         return BLOCK_NOT_FOUND;
     
@@ -248,7 +253,7 @@ int copy_block_to_first_free(block_index_t src_index) {
     retstat = create_block(src_block, src_hash);
     if (retstat < 0) return ERROR;
     
-    blocks_hash_element_t *src_element = blocks_table_find(metadata, src_hash);
+    blocks_hash_element_t *src_element = blocks_table_find(blocks_metadata, src_hash);
     src_element->block_index = index;
     
     return SUCCESS;
@@ -298,21 +303,12 @@ int check_and_defragment_blocks() {
 /* ############################### VIRTUAL FILE FUNCTIONS ############################### */
 /* ###################################################################################### */
 
-void load_files_hashmap() {
-    
+ssize_t create_user_file(const char* filename, char* file_id_str) {
+    element = tree_table_add_new(tree_metadata, filename, FALSE);
+    snprintf(file_id_str, NAME_MAX, "%d", element->id);
+
+    return SUCCESS;
 }
-
-// ssize_t create_user_file(char* fpath) {
-//     uuid_t uuid;
-//     char uuid_str[37];
-
-//     const char *filename = basename((char *)fpath);
-
-//     uuid_generate(uuid);
-//     uuid_unparse(uuid, uuid_str);
-
-    
-// }
 
 ssize_t get_virtual_file_size(int fd) {
     struct stat statbuf;
@@ -322,18 +318,18 @@ ssize_t get_virtual_file_size(int fd) {
 
 ssize_t get_user_file_size(int fd) {
     block_offset_t last_block_size;
-    ssize_t retstat = read_metadata_from_file(fd, (unsigned char *) &last_block_size);
+    ssize_t retstat = read_blocks_metadata_from_file(fd, (unsigned char *) &last_block_size);
     ssize_t virtual_file_size = get_virtual_file_size(fd);
     ssize_t size = last_block_size + ((virtual_file_size - VIRTFILE_METADATA_SIZE) / VIRTFILE_PTR_SIZE - (last_block_size != 0)) * BLOCK_SIZE;
     return retstat < 0 ? ERROR : MAX(size, 0);
 }
 
-ssize_t read_metadata_from_file(int fd, unsigned char buf[VIRTFILE_METADATA_SIZE]) {
+ssize_t read_blocks_metadata_from_file(int fd, unsigned char buf[VIRTFILE_METADATA_SIZE]) {
     int retstat = log_syscall("pread", pread(fd, buf, VIRTFILE_METADATA_SIZE, 0), 0);
     return retstat < 0 ? ERROR : retstat;
 }
 
-ssize_t write_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]) {
+ssize_t write_blocks_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]) {
     int retstat = log_syscall("pwrite", pwrite(fd, buf, VIRTFILE_METADATA_SIZE, 0), 0);
     return retstat < 0 ? ERROR : retstat;
 }
@@ -357,7 +353,7 @@ ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block
     retstat = read_hash_from_file(fd, hash, VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE, 1);
     if (retstat < 0) return ERROR;
 
-    block_index_t index = blocks_table_find(metadata, hash)->block_index;
+    block_index_t index = blocks_table_find(blocks_metadata, hash)->block_index;
     retstat = read_block((unsigned char *) buf, index * BLOCK_SIZE + block_offset, MIN(byte_count, BLOCK_SIZE - block_offset));
     if (retstat < 0) return ERROR;
 
@@ -376,7 +372,7 @@ ssize_t read_blocks_from_file(int fd, char *buf, block_index_t start_index, bloc
         retstat = read_hash_from_file(fd, hash, virtual_file_offset, 1);
         if (retstat < 0) return ERROR;
 
-        block_index_t index = blocks_table_find(metadata, hash)->block_index;
+        block_index_t index = blocks_table_find(blocks_metadata, hash)->block_index;
         retstat = read_block((unsigned char *) buf + total_read, index * BLOCK_SIZE, BLOCK_SIZE);
         if (retstat < 0) return ERROR;
         else total_read += retstat;
@@ -403,7 +399,7 @@ ssize_t write_block_to_file(int fd, const char *buf, block_index_t block_index, 
     // Read previous block content or fill it with zeros
     old_block_exists = (retstat != 0);
     if (old_block_exists) {
-        block_index_t index = blocks_table_find(metadata, old_hash)->block_index;
+        block_index_t index = blocks_table_find(blocks_metadata, old_hash)->block_index;
         retstat = read_block(new_block, index * BLOCK_SIZE, BLOCK_SIZE);
         if (retstat < 0) return ERROR;
     } else {
@@ -474,9 +470,9 @@ int zeropad_file(int fd, ssize_t new_size) {
     block_offset_t new_last_block_size = new_size % BLOCK_SIZE;
 
     // Read old last block size and update it
-    retstat = read_metadata_from_file(fd, (unsigned char *) &last_block_size);
+    retstat = read_blocks_metadata_from_file(fd, (unsigned char *) &last_block_size);
     if (retstat == ERROR) return ERROR;
-    retstat = write_metadata_to_file(fd, (unsigned char *) &new_last_block_size);
+    retstat = write_blocks_metadata_to_file(fd, (unsigned char *) &new_last_block_size);
     if (retstat == ERROR) return ERROR;
     
     // Fill the first block with zeros
@@ -503,7 +499,7 @@ int zeropad_file(int fd, ssize_t new_size) {
             break;
     }
 
-    blocks_hash_element_t *zero_block_hash = blocks_table_find(metadata, hash);
+    blocks_hash_element_t *zero_block_hash = blocks_table_find(blocks_metadata, hash);
     zero_block_hash->ref_count += zero_blocks - 1;
 
     return retstat < 0 ? ERROR : SUCCESS;
@@ -520,7 +516,7 @@ int truncate_file(int fd, ssize_t new_size) {
     off_t offset = new_real_size;
 
     // Write new last_block_size
-    retstat = write_metadata_to_file(fd, (unsigned char *) &last_block_size);
+    retstat = write_blocks_metadata_to_file(fd, (unsigned char *) &last_block_size);
     if (retstat == ERROR) return ERROR;
 
     while (1) {

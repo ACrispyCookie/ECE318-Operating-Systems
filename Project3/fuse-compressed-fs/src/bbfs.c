@@ -145,30 +145,34 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
     ssize_t retstat;
     int fd;
     char fpath[PATH_MAX];
-    block_offset_t last_block_size = 0;
-    
-    log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n",
-	  path, mode, dev);
+    const char *filename = basename((char *)fpath);
+    tree_hash_element_t* element;
+    char file_id_str[NAME_MAX];
+
+    log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n", path, mode, dev);
     bb_fullpath(fpath, path);
-    
-    // On Linux this could just be 'mknod(path, mode, dev)' but this
-    // tries to be be more portable by honoring the quote in the Linux
-    // mknod man page stating the only portable use of mknod() is to
-    // make a fifo, but saying it should never actually be used for
-    // that.
-    if (S_ISFIFO(mode))
-	    retstat = log_syscall("mkfifo", mkfifo(fpath, mode), 0);
-	else if (!S_ISREG(mode))
-	    retstat = log_syscall("mknod", mknod(fpath, mode, dev), 0);
 
-    // retstat = create_user_file(fpath);
+    // TODO: return error if file exists
 
-    // Write metadata
-    retstat = log_syscall("open", fd = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
+    retstat = log_syscall("mknod", mknod(fpath, mode, dev), 0);
+    if (retstat < 0)
+        return ERROR;
+
+    create_user_file(filename, file_id_str);
+
+    retstat = log_syscall("open", fd = open(file_id_str, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
+    if (retstat < 0)
+        return ERROR;
+
     retstat = write_metadata_to_file(fd, (unsigned char *) &last_block_size);
+    if (retstat < 0)
+        return ERROR;
+
     retstat = log_syscall("close", close(fd), 0);
-    
-    return retstat;
+    if (retstat < 0)
+        return ERROR;
+
+    return SUCCESS;
 }
 
 /** Create a directory */
