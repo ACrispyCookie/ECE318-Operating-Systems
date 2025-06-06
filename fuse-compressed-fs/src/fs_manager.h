@@ -16,9 +16,9 @@
 #define VIRTFILE_METADATA_SIZE 2
 #define VIRTFILE_PTR_SIZE HASH_SIZE
 
-// Metadata file related
-#define METADATA_REF_COUNT_SIZE 4
-#define METADATA_BLOCK_INDEX_SIZE 4
+// Blocks metadata file related
+#define BLOCKS_METADATA_REF_COUNT_SIZE 4
+#define BLOCKS_METADATA_BLOCK_INDEX_SIZE 4
 #define FRAGMENTATION_MAX_PERCENTAGE 0.1
 
 // File related
@@ -139,8 +139,7 @@ int copy_block_to_first_free(block_index_t src_index);
 /* ###################################################################################### */
 
 /*
-    Get the path of the file to be created, add the related metadata
-    to the hashmap 
+    Add entry of the user file in the tree structure, create metadata file
 */
 ssize_t create_user_file(char* fpath);
 
