@@ -36,7 +36,7 @@ blocks_hash_element_t *blocks_table_find(blocks_hash_element_t *table, const uns
     return element;
 }
 
-void blocks_blocks_table_clear_foreach(blocks_hash_element_t *table, void (*func)(blocks_hash_element_t *)) {
+void blocks_table_clear_foreach(blocks_hash_element_t *table, void (*func)(blocks_hash_element_t *)) {
 	blocks_hash_element_t *curr, *tmp;
 
 	HASH_ITER(hh, table, curr, tmp) {
@@ -47,7 +47,7 @@ void blocks_blocks_table_clear_foreach(blocks_hash_element_t *table, void (*func
 }
 
 void blocks_table_clear(blocks_hash_element_t *table) {
-	blocks_blocks_table_clear_foreach(table, NULL);
+	blocks_table_clear_foreach(table, NULL);
 }
 
 void blocks_table_print(blocks_hash_element_t *table, void (*print_func)(const char *format, ...)) {
