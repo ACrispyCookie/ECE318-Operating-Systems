@@ -46,12 +46,12 @@ nodes_hash_element_t *nodes_table_find(nodes_hash_element_t *table, const char n
     return element;
 }
 
-void nodes_table_clear_foreach(nodes_hash_element_t *table, void (*func)(nodes_hash_element_t *)) {
+void nodes_table_clear_foreach(nodes_hash_element_t *table, void (*func)(nodes_hash_element_t *, int), int fd) {
 	nodes_hash_element_t *curr, *tmp;
 
 	HASH_ITER(hh, table, curr, tmp) {
 		if (func != NULL)
-			func(curr);
+			func(curr, fd);
 
 		HASH_DEL(table, curr);
 		free(curr);

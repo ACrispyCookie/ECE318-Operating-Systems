@@ -20,7 +20,7 @@ nodes_hash_element_t *nodes_table_find(nodes_hash_element_t *table, const char n
 
 int nodes_table_remove(nodes_hash_element_t **table, const char name[NAME_MAX]);
 
-void nodes_table_clear_foreach(nodes_hash_element_t *table, void (*func)(nodes_hash_element_t *));
+void nodes_table_clear_foreach(nodes_hash_element_t *table, void (*func)(nodes_hash_element_t *, int), int fd);
 
 void nodes_table_clear(nodes_hash_element_t *table);
 

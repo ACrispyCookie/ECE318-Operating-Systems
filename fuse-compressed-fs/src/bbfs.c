@@ -84,7 +84,8 @@ int bb_getattr(const char *path, struct stat *statbuf)
 	  path, statbuf);
     bb_fullpath(fpath, path);
 
-    retstat = log_syscall("lstat", lstat(fpath, statbuf), 0);
+    // TODO: remove lstat
+    // retstat = log_syscall("lstat", lstat(fpath, statbuf), 0);
     log_stat(statbuf);
 
     // If it is a regular file
@@ -217,6 +218,7 @@ int bb_rmdir(const char *path)
 	    path);
     bb_fullpath(fpath, path);
 
+    // TODO: 
     return log_syscall("rmdir", rmdir(fpath), 0);
 }
 
@@ -668,6 +670,8 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
 
     // since opendir returns a pointer, takes some custom handling of
     // return status.
+
+    // TODO: only check if exists
     dp = opendir(fpath);
     log_msg("    opendir returned 0x%p\n", dp);
     if (dp == NULL)
@@ -748,6 +752,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
  */
 int bb_releasedir(const char *path, struct fuse_file_info *fi)
 {
+    // TODO: remove
     int retstat = 0;
     
     log_msg("\nbb_releasedir(path=\"%s\", fi=0x%08x)\n",
