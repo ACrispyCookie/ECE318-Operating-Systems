@@ -47,21 +47,60 @@
 
 #include "log.h"
 
-//  All the paths I see are relative to the root of the mounted
-//  filesystem.  In order to get to the underlying filesystem, I need to
-//  have the mountpoint.  I'll save it away early on in main(), and then
-//  whenever I need a path for something I'll call this to construct
-//  it.
-static void bb_fullpath(char fpath[PATH_MAX], const char *path)
+/** Translate virtual node paths to real paths
+ *
+ * Get the path relative to the mount dir and return the real absolute path.
+ * The real_path will contain the translation from the virtual name to the real
+ * file in the rootdir that contains the related metadata.
+ *
+ * e.g.: Given the virtual path "/somedir/file.txt" the real path will be
+ *       "/absolute/path/to/mountdir/[node_id]" where [node_id] is the id
+ *       of the requested node. That file contains the metadata.
+ */
+static int bb_fullpath(char real_path[PATH_MAX], char *virtual_path)
 {
-    strcpy(fpath, BB_DATA->rootdir);
-    strcat(fpath, DATA_PATH);
-    strncat(fpath, path, PATH_MAX - 1); // ridiculously long paths will
-				    // break here
+    char node_id[PATH_MAX];
+    const char* filename = basename((char *)real_path);
+    char* node_id_str;
+
+    nodes_hash_element_t* node_entry;
+    nodes_hash_element_t* directory_hashtable = get_node_hashtable_from_path(dirname(real_path));
+
+    if (directory_hashtable == NULL)
+        return ERROR;
+
+    strncpy(real_path, BB_DATA->rootdir, PATH_MAX - 1);
+    strncat(real_path, DATA_PATH, PATH_MAX - 1);
+
+    node_entry = nodes_table_find(directory_hashtable, filename);
+    if (node_entry == NULL)
+        return ERROR;
+
+    snprintf(node_id_str, PATH_MAX, "%lu", node_entry->id);
+
+    strncat(real_path, node_id_str, PATH_MAX - 1); // ridiculously long paths will break here
 
     log_msg("    bb_fullpath:  rootdir = \"%s\", path = \"%s\", fpath = \"%s\"\n",
-	    BB_DATA->rootdir, path, fpath);
+        BB_DATA->rootdir, virtual_path, real_path);
+
+    return SUCCESS;
 }
+
+// //  All the paths I see are relative to the root of the mounted
+// //  filesystem.  In order to get to the underlying filesystem, I need to
+// //  have the mountpoint.  I'll save it away early on in main(), and then
+// //  whenever I need a path for something I'll call this to construct
+// //  it.
+// static void bb_fullpath(char fpath[PATH_MAX], const char *path)
+// {
+//     strcpy(fpath, BB_DATA->rootdir);
+//     strcat(fpath, DATA_PATH);
+//     strncat(fpath, path, PATH_MAX - 1); // ridiculously long paths will
+// 				    // break here
+
+//     log_msg("    bb_fullpath:  rootdir = \"%s\", path = \"%s\", fpath = \"%s\"\n",
+// 	    BB_DATA->rootdir, path, fpath);
+// }
 
 ///////////////////////////////////////////////////////////
 //
@@ -80,12 +119,11 @@ int bb_getattr(const char *path, struct stat *statbuf)
     int fd;
     char fpath[PATH_MAX];
     
-    log_msg("\nbb_getattr(path=\"%s\", statbuf=0x%08x)\n",
-	  path, statbuf);
-    bb_fullpath(fpath, path);
+    log_msg("\nbb_getattr(path=\"%s\", statbuf=0x%08x)\n", path, statbuf);
 
-    // TODO: remove lstat
-    // retstat = log_syscall("lstat", lstat(fpath, statbuf), 0);
+    if (bb_fullpath(fpath, path) < 0)
+        return ERROR;
+
     log_stat(statbuf);
 
     // If it is a regular file
@@ -94,11 +132,14 @@ int bb_getattr(const char *path, struct stat *statbuf)
         if (retstat < 0) return -1;
 
         retstat = get_user_file_size(fd);
-        if (retstat == ERROR) return -1;
+        if (retstat == ERROR)
+            return ERROR;
+
         statbuf->st_size = retstat;
 
         retstat = log_syscall("close", close(fd), 0);
-        if (retstat < 0) return -1;
+        if (retstat < 0)
+            return ERROR;
     }
 
     return retstat;
@@ -168,7 +209,7 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
     }
 
     // Create the new file and write 0 as its last block size
-    snprintf(new_file_path, "%s%lu", BB_DATA->rootdir, new_node->id);
+    snprintf(new_file_path, PATH_MAX, "%s%lu", BB_DATA->rootdir, new_node->id);
 
     retstat = log_syscall("open", fd = open(new_file_path, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
     if (retstat < 0)

@@ -146,7 +146,7 @@ static void load_node_hashmap(int fd, nodes_hash_element_t* node_hashmap) {
             char new_dir_path[PATH_MAX];
             int new_dir_fd;
 
-            snprintf(new_dir_path, "%s%lu", BB_DATA->rootdir, curr_node_id, PATH_MAX);
+            snprintf(new_dir_path, PATH_MAX, "%s%lu", BB_DATA->rootdir, curr_node_id);
             new_dir_fd = open(new_dir_path, O_RDONLY);
 
             load_node_hashmap(new_dir_fd, element->hashmap);
@@ -221,7 +221,7 @@ static void save_node_metadata_element(nodes_hash_element_t *element, int fd) {
         // Write entry's data to file
         write(fd, &element->id, sizeof(unsigned long));
 
-        snprintf(curr_filename, (is_dir) ? "%s/" : "%s", element->name, NAME_MAX);
+        snprintf(curr_filename, NAME_MAX, (is_dir) ? "%s/" : "%s", element->name);
         curr_name_size = strnlen(curr_filename, NAME_MAX);
 
         write(fd, &curr_name_size, sizeof(unsigned char));
@@ -232,7 +232,7 @@ static void save_node_metadata_element(nodes_hash_element_t *element, int fd) {
             char new_dir_path[PATH_MAX];
             int new_dir_fd;
 
-            snprintf(new_dir_path, "%s%lu", BB_DATA->rootdir, element->id, PATH_MAX);
+            snprintf(new_dir_path, PATH_MAX, "%s%lu", BB_DATA->rootdir, element->id);
             new_dir_fd = open(new_dir_path, O_WRONLY);
 
             nodes_table_clear_foreach(element->hashmap, save_node_metadata_element, new_dir_fd);
