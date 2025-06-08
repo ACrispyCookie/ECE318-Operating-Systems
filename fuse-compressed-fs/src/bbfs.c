@@ -55,7 +55,7 @@
 static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 {
     strcpy(fpath, BB_DATA->rootdir);
-    strcat(fpath, USER_PATH);
+    strcat(fpath, DATA_PATH);
     strncat(fpath, path, PATH_MAX - 1); // ridiculously long paths will
 				    // break here
 
@@ -145,8 +145,6 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
     ssize_t retstat;
     int fd;
     char fpath[PATH_MAX];
-    const char *filename = basename((char *)fpath);
-    tree_hash_element_t* element;
     char file_id_str[NAME_MAX];
 
     log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n", path, mode, dev);
@@ -158,12 +156,13 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
     if (retstat < 0)
         return ERROR;
 
-    create_user_file(filename, file_id_str);
+    // create_user_file(filename, file_id_str);
 
     retstat = log_syscall("open", fd = open(file_id_str, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
     if (retstat < 0)
         return ERROR;
 
+    block_offset_t last_block_size = 0;
     retstat = write_metadata_to_file(fd, (unsigned char *) &last_block_size);
     if (retstat < 0)
         return ERROR;
@@ -808,7 +807,8 @@ void *bb_init(struct fuse_conn_info *conn)
     // Open blocks and metadata
     char blocks_path[PATH_MAX];
     char free_blocks_path[PATH_MAX];
-    char metadata_path[PATH_MAX];
+    char blocks_metadata_path[PATH_MAX];
+    char root_node_metadata_path[PATH_MAX];
     char user_folder_path[PATH_MAX];
 
     strcpy(blocks_path, BB_DATA->rootdir);
@@ -819,17 +819,22 @@ void *bb_init(struct fuse_conn_info *conn)
     strcat(free_blocks_path, FREE_BLOCKS_PATH);
     log_syscall("open", free_blocks_fd = open(free_blocks_path, O_CREAT | O_RDWR, STORAGE_FILES_PERMISSIONS), 0);
 
-    strcpy(metadata_path, BB_DATA->rootdir);
-    strcat(metadata_path, METADATA_PATH);
-    log_syscall("open", metadata_fd = open(metadata_path, O_CREAT | O_RDWR, STORAGE_FILES_PERMISSIONS), 0);
+    strcpy(blocks_metadata_path, BB_DATA->rootdir);
+    strcat(blocks_metadata_path, BLOCKS_METADATA_PATH);
+    log_syscall("open", blocks_metadata_fd = open(blocks_metadata_path, O_CREAT | O_RDWR, STORAGE_FILES_PERMISSIONS), 0);
+
+    strcpy(root_node_metadata_path, BB_DATA->rootdir);
+    strcat(root_node_metadata_path, ROOT_PATH);
+    log_syscall("open", root_node_metadata_fd = open(root_node_metadata_path, O_CREAT | O_RDWR, STORAGE_FILES_PERMISSIONS), 0);
 
     strcpy(user_folder_path, BB_DATA->rootdir);
-    strcat(user_folder_path, USER_PATH);
+    strcat(user_folder_path, DATA_PATH);
     log_syscall("mkdir", retstat = mkdir(user_folder_path, USER_FOLDER_PERMISSIONS), 0);
     if (retstat == -1 && errno != EEXIST) return NULL;
 
     // Load metadata and free blocks to memory
-    load_metadata();
+    load_blocks_metadata();
+    load_node_metadata();
     load_free_blocks();
     
     return BB_DATA;
@@ -845,11 +850,10 @@ void *bb_init(struct fuse_conn_info *conn)
 void bb_destroy(void *userdata)
 {
     // Save metadata and free blocks and close files
-    save_metadata();
+    save_blocks_metadata();
+    save_node_metadata();
     save_free_blocks();
     close(blocks_fd);
-    close(metadata_fd);
-    close(free_blocks_fd);
 
     log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
 }

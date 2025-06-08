@@ -10,7 +10,6 @@
     field.
 */
 static node_t *create_node(void *data);
-static int list_add_unsorted(list_t *list, void *data);
 static node_t *list_find_larger(list_t *list, void *data);
 
 list_t *list_init(int (*comparator)(void *, void *)) {

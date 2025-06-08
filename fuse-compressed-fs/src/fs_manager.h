@@ -4,6 +4,7 @@
 #include <openssl/sha.h>
 #include "list/list.h"
 #include "blocks_hashtable/blocks_hashtable.h"
+#include "nodes_hashtable/nodes_hashtable.h"
 
 // Block repository related
 #define BLOCK_BUFFER 1024
@@ -24,8 +25,9 @@
 // File related
 #define BLOCKS_PATH "/blocks"
 #define FREE_BLOCKS_PATH "/free_blocks"
-#define METADATA_PATH "/metadata"
-#define USER_PATH "/user"
+#define BLOCKS_METADATA_PATH "/metadata"
+#define DATA_PATH "/data"
+#define ROOT_PATH "/data/root"
 #define STORAGE_FILES_PERMISSIONS 0664
 #define USER_FOLDER_PERMISSIONS 0774
 
@@ -50,13 +52,16 @@ typedef unsigned short block_offset_t;
 typedef long block_count_t;
 
 /* File descriptor for the blocks repository */
-extern int blocks_fd, free_blocks_fd, metadata_fd;
+extern int blocks_fd, free_blocks_fd, blocks_metadata_fd, root_node_metadata_fd;
 
 /* List of free blocks */
 extern list_t *free_blocks;
 
 /* Metadata hash table */
-extern blocks_hash_element_t *metadata;
+extern blocks_hash_element_t *blocks_metadata;
+
+/* Node hash table */
+extern nodes_hash_element_t *root_node_metadata;
 
 /* ###################################################################################### */
 /* ################################# LOAD/SAVE FUNCTIONS ################################ */
@@ -68,6 +73,11 @@ extern blocks_hash_element_t *metadata;
 void load_blocks_metadata();
 
 /*
+    Load the nodes hashtable starting from the root file.
+*/
+void load_node_metadata();
+
+/*
     Load the free blocks list from the free blocks file.
 */
 void load_free_blocks();
@@ -76,6 +86,11 @@ void load_free_blocks();
     Saves the metadata hashtable to the metadata file and destroys it
 */
 void save_blocks_metadata();
+
+/*
+    Saves the nodes hashtable starting from the root file.
+*/
+void save_node_metadata();
 
 /*
     Saves the free block list in the free blocks files and clears it.
@@ -174,7 +189,7 @@ ssize_t read_metadata_from_file(int fd, unsigned char buf[VIRTFILE_METADATA_SIZE
     the total read bytes - on success
     ERROR - on error
 */
-ssize_t write_blocks_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]);
+ssize_t write_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]);
 
 /*
     Read byte_count bytes from a file at a given block and offset.

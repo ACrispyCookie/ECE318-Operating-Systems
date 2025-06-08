@@ -1,35 +1,34 @@
-#include "tree_hashtable.h"
+#include "nodes_hashtable.h"
 #include "log.h"
+#include <limits.h>
 #include <stdio.h>
 
 unsigned long last_id = 0;
 
-nodes_hash_element_t *nodes_table_add(nodes_hash_element_t **table, char name[NAME_MAX], bool is_dir, unsigned long id) {
+nodes_hash_element_t *nodes_table_add_new(nodes_hash_element_t **table, const char name[NAME_MAX]) {
+  	return nodes_table_add(table, name, last_id++);
+}
+
+nodes_hash_element_t *nodes_table_add(nodes_hash_element_t **table, const char name[NAME_MAX], unsigned long id) {
 	nodes_hash_element_t *element;
 
-	HASH_FIND_PTR(*table, hash, element);
+	HASH_FIND_PTR(*table, name, element);
 	if (element != NULL)
 		return NULL;
 
 	element = malloc(sizeof *element);
 
-	element->id = last_id;
+	element->id = id;
 	strncpy(element->name, name, NAME_MAX);
-	element->is_dir = is_dir;
+	element->hashmap = NULL;
 
 	return element;
 }
 
-nodes_hash_element_t *nodes_table_add_new(nodes_hash_element_t **table, const char name[NAME_MAX], bool is_dir) {
-	last_id++;
-
-  	return nodes_table_add(table, name, is_dir, last_id);
-}
-
-int nodes_table_remove(nodes_hash_element_t **table, unsigned long id) {
+int nodes_table_remove(nodes_hash_element_t **table, const char name[NAME_MAX]) {
 	nodes_hash_element_t *element;
 
-	HASH_FIND_PTR(*table, id, element);
+	HASH_FIND_PTR(*table, name, element);
 	if (element == NULL)
 		return 1;
 
@@ -61,4 +60,8 @@ void nodes_table_clear_foreach(nodes_hash_element_t *table, void (*func)(nodes_h
 
 void nodes_table_clear(nodes_hash_element_t *table) {
 	nodes_table_clear_foreach(table, NULL);
+}
+
+void set_last_id(unsigned long id) {
+	last_id = id;
 }

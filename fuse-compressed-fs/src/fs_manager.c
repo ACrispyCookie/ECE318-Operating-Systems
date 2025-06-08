@@ -7,7 +7,7 @@
 #include <sys/stat.h>
 
 /* File descriptor for the blocks repository */
-int blocks_fd, free_blocks_fd, blocks_metadata_fd;
+int blocks_fd, free_blocks_fd, blocks_metadata_fd, root_node_metadata_fd;
 
 /* List of free blocks */
 list_t *free_blocks;
@@ -16,7 +16,7 @@ list_t *free_blocks;
 blocks_hash_element_t *blocks_metadata;
 
 /* Hashmap with key the file ids and value a hashmap */
-nodes_hash_element_t *node_metadata;
+nodes_hash_element_t *root_node_metadata;
 
 void sha1_print(unsigned char hash[HASH_SIZE]) {
     log_msg("SHA1 hash: ");
@@ -69,6 +69,11 @@ static ssize_t write_hash_to_file(int fd, unsigned char *hash, off_t block_offse
 static ssize_t read_block(unsigned char buf[BLOCK_SIZE], off_t block_offset, ssize_t byte_count);
 
 /*
+    Saves a node metadata entry in the appropriate file.
+*/
+static void save_node_metadata_element(nodes_hash_element_t *element);
+
+/*
     Saves a metadata entry in the metadata file.
 */
 static void save_blocks_metadata_element(blocks_hash_element_t *element);
@@ -94,13 +99,11 @@ static int index_comparator(void *num1, void *num2) {
 /* ################################# LOAD/SAVE FUNCTIONS ################################ */
 /* ###################################################################################### */
 
-load_node_metadata()
-{
+void load_node_metadata() {
 
 }
 
-void load_blocks_metadata() 
-{
+void load_blocks_metadata() {
     unsigned char hash[HASH_SIZE];
     ref_count_t ref_count;
     block_index_t block_index;
@@ -117,8 +120,7 @@ void load_blocks_metadata()
     }
 }
 
-void load_free_blocks() 
-{
+void load_free_blocks() {
     free_blocks = list_init(index_comparator);
 
     while(1) {
@@ -131,10 +133,17 @@ void load_free_blocks()
     }
 }
 
+void save_node_metadata() {
+    log_syscall("ftruncate", ftruncate(root_node_metadata_fd, 0), 0);
+    lseek(root_node_metadata_fd, 0, SEEK_SET);
+    nodes_table_clear_foreach(root_node_metadata, save_node_metadata_element);
+    close(root_node_metadata_fd);
+}
+
 void save_blocks_metadata() {
     log_syscall("ftruncate", ftruncate(blocks_metadata_fd, 0), 0);
     lseek(blocks_metadata_fd, 0, SEEK_SET);
-    blocks_blocks_table_clear_foreach(metadata, save_metadata_element);
+    blocks_table_clear_foreach(blocks_metadata, save_blocks_metadata_element);
     close(blocks_metadata_fd);
 }
 
@@ -145,7 +154,11 @@ void save_free_blocks() {
     close(free_blocks_fd);
 }
 
-static void save_metadata_element(blocks_hash_element_t *element) {
+static void save_node_metadata_element(nodes_hash_element_t *element) {
+
+}
+
+static void save_blocks_metadata_element(blocks_hash_element_t *element) {
     unsigned char hash[HASH_SIZE];
     memcpy(hash, element->hash, HASH_SIZE);
     ref_count_t ref_count = element->ref_count;
@@ -316,18 +329,18 @@ ssize_t get_virtual_file_size(int fd) {
 
 ssize_t get_user_file_size(int fd) {
     block_offset_t last_block_size;
-    ssize_t retstat = read_blocks_metadata_from_file(fd, (unsigned char *) &last_block_size);
+    ssize_t retstat = read_metadata_from_file(fd, (unsigned char *) &last_block_size);
     ssize_t virtual_file_size = get_virtual_file_size(fd);
     ssize_t size = last_block_size + ((virtual_file_size - VIRTFILE_METADATA_SIZE) / VIRTFILE_PTR_SIZE - (last_block_size != 0)) * BLOCK_SIZE;
     return retstat < 0 ? ERROR : MAX(size, 0);
 }
 
-ssize_t read_blocks_metadata_from_file(int fd, unsigned char buf[VIRTFILE_METADATA_SIZE]) {
+ssize_t read_metadata_from_file(int fd, unsigned char buf[VIRTFILE_METADATA_SIZE]) {
     int retstat = log_syscall("pread", pread(fd, buf, VIRTFILE_METADATA_SIZE, 0), 0);
     return retstat < 0 ? ERROR : retstat;
 }
 
-ssize_t write_blocks_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]) {
+ssize_t write_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]) {
     int retstat = log_syscall("pwrite", pwrite(fd, buf, VIRTFILE_METADATA_SIZE, 0), 0);
     return retstat < 0 ? ERROR : retstat;
 }
@@ -468,9 +481,9 @@ int zeropad_file(int fd, ssize_t new_size) {
     block_offset_t new_last_block_size = new_size % BLOCK_SIZE;
 
     // Read old last block size and update it
-    retstat = read_blocks_metadata_from_file(fd, (unsigned char *) &last_block_size);
+    retstat = read_metadata_from_file(fd, (unsigned char *) &last_block_size);
     if (retstat == ERROR) return ERROR;
-    retstat = write_blocks_metadata_to_file(fd, (unsigned char *) &new_last_block_size);
+    retstat = write_metadata_to_file(fd, (unsigned char *) &new_last_block_size);
     if (retstat == ERROR) return ERROR;
     
     // Fill the first block with zeros
@@ -514,7 +527,7 @@ int truncate_file(int fd, ssize_t new_size) {
     off_t offset = new_real_size;
 
     // Write new last_block_size
-    retstat = write_blocks_metadata_to_file(fd, (unsigned char *) &last_block_size);
+    retstat = write_metadata_to_file(fd, (unsigned char *) &last_block_size);
     if (retstat == ERROR) return ERROR;
 
     while (1) {

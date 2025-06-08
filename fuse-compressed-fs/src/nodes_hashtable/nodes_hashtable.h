@@ -1,25 +1,29 @@
-#ifndef HASHTABLE_H
-#define HASHTABLE_H
+#ifndef NODES_HASHTABLE_H
+#define NODES_HASHTABLE_H
 
 #include <limits.h>
 #include <stdbool.h>
 #include "../uthash.h"
 
-typedef struct element {
-    unsigned long id;
+typedef struct nodes_element {
     char name[NAME_MAX];
-    bool is_dir;
+    unsigned long id;
+    struct nodes_element *hashmap;
     UT_hash_handle hh;
 } nodes_hash_element_t;
 
-nodes_hash_element_t *nodes_table_add(nodes_hash_element_t **table, char name[NAME_MAX], bool is_dir);
+nodes_hash_element_t *nodes_table_add_new(nodes_hash_element_t **table, const char name[NAME_MAX]);
 
-nodes_hash_element_t *nodes_table_find(nodes_hash_element_t *table, char name[NAME_MAX]);
+nodes_hash_element_t *nodes_table_add(nodes_hash_element_t **table, const char name[NAME_MAX], unsigned long id);
 
-int blocks_table_remove(nodes_hash_element_t **table, char name[NAME_MAX]);
+nodes_hash_element_t *nodes_table_find(nodes_hash_element_t *table, const char name[NAME_MAX]);
 
-void blocks_table_clear(nodes_hash_element_t *table);
+int nodes_table_remove(nodes_hash_element_t **table, const char name[NAME_MAX]);
 
-void blocks_table_print(nodes_hash_element_t *table, void (*print_func)(const char *format, ...));
+void nodes_table_clear_foreach(nodes_hash_element_t *table, void (*func)(nodes_hash_element_t *));
+
+void nodes_table_clear(nodes_hash_element_t *table);
+
+void set_last_id(unsigned long id);
 
 #endif
