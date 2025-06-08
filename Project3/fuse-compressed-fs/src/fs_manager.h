@@ -65,7 +65,7 @@ extern blocks_hash_element_t *metadata;
 /*
     Load the metadata hashtable from the metadata file.
 */
-void load_metadata();
+void load_blocks_metadata();
 
 /*
     Load the free blocks list from the free blocks file.
@@ -75,7 +75,7 @@ void load_free_blocks();
 /*
     Saves the metadata hashtable to the metadata file and destroys it
 */
-void save_metadata();
+void save_blocks_metadata();
 
 /*
     Saves the free block list in the free blocks files and clears it.
@@ -139,11 +139,6 @@ int copy_block_to_first_free(block_index_t src_index);
 /* ###################################################################################### */
 
 /*
-    Add entry of the user file in the tree structure, create metadata file
-*/
-ssize_t create_user_file(char* fpath);
-
-/*
     Get real size of a virtual file.
     (Sum of all the pointers to blocks and the metadata)
 
@@ -179,7 +174,7 @@ ssize_t read_metadata_from_file(int fd, unsigned char buf[VIRTFILE_METADATA_SIZE
     the total read bytes - on success
     ERROR - on error
 */
-ssize_t write_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]);
+ssize_t write_blocks_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]);
 
 /*
     Read byte_count bytes from a file at a given block and offset.

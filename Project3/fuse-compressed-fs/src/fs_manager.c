@@ -15,8 +15,8 @@ list_t *free_blocks;
 /* Metadata hash table */
 blocks_hash_element_t *blocks_metadata;
 
-/* Files tree structure metadata table */
-tree_hash_element_t *tree_metadata;
+/* Hashmap with key the file ids and value a hashmap */
+nodes_hash_element_t *node_metadata;
 
 void sha1_print(unsigned char hash[HASH_SIZE]) {
     log_msg("SHA1 hash: ");
@@ -93,6 +93,11 @@ static int index_comparator(void *num1, void *num2) {
 /* ###################################################################################### */
 /* ################################# LOAD/SAVE FUNCTIONS ################################ */
 /* ###################################################################################### */
+
+load_node_metadata()
+{
+
+}
 
 void load_blocks_metadata() 
 {
@@ -302,13 +307,6 @@ int check_and_defragment_blocks() {
 /* ###################################################################################### */
 /* ############################### VIRTUAL FILE FUNCTIONS ############################### */
 /* ###################################################################################### */
-
-ssize_t create_user_file(const char* filename, char* file_id_str) {
-    element = tree_table_add_new(tree_metadata, filename, FALSE);
-    snprintf(file_id_str, NAME_MAX, "%d", element->id);
-
-    return SUCCESS;
-}
 
 ssize_t get_virtual_file_size(int fd) {
     struct stat statbuf;
