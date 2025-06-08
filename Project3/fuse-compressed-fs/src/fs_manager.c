@@ -1,5 +1,7 @@
 #include "fs_manager.h"
 #include "log.h"
+#include "params.h"
+#include <fuse.h>
 #include <limits.h>
 #include <unistd.h>
 #include <string.h>
@@ -25,6 +27,11 @@ void sha1_print(unsigned char hash[HASH_SIZE]) {
     }
     log_msg("\n");
 }
+
+/*
+    Load the node structure from disk to memory based on the metadata files.
+*/
+static void load_node_hashmap(int fd, nodes_hash_element_t* node_hashmap);
 
 /*
     Comparator for free_blocks list
@@ -100,7 +107,49 @@ static int index_comparator(void *num1, void *num2) {
 /* ###################################################################################### */
 
 void load_node_metadata() {
+    // Load root folder hashmap
+    load_node_hashmap(root_node_metadata_fd, root_node_metadata);
+}
 
+static void load_node_hashmap(int fd, nodes_hash_element_t* node_hashmap) {
+    unsigned long curr_node_id;
+    unsigned char curr_name_size;
+    char curr_filename[NAME_MAX];
+    int bytes_read;
+    bool is_dir;
+
+    nodes_hash_element_t* element;
+
+    while (1) {
+        // Read entry's data from file
+        bytes_read = read(fd, &curr_node_id, sizeof(unsigned long));
+        if (bytes_read == 0)
+            return;
+
+        read(fd, &curr_name_size, sizeof(unsigned char));
+        read(fd, &curr_filename, curr_name_size);
+
+        is_dir = curr_filename[curr_name_size - 1] == '/';
+
+        // Replace slash with \0 if is dir or at the end of the name for a file
+        curr_filename[curr_name_size - (is_dir) ? 0 : 1] = '\0';
+
+        // Add entry to hashmap
+        element = nodes_table_add(node_hashmap, curr_filename, curr_node_id);
+
+        // Check if entry is directory and call recursively
+        if (is_dir) {
+            char new_dir_path[PATH_MAX];
+            int new_dir_fd;
+
+            snprintf(new_dir_path, "%s%lu", BB_DATA->rootdir, curr_node_id, PATH_MAX);
+            new_dir_fd = open(new_dir_path, O_RDONLY);
+
+            load_node_hashmap(new_dir_fd, element->hashmap);
+
+            close(new_dir_fd);
+        }
+    }
 }
 
 void load_blocks_metadata() {
@@ -134,10 +183,7 @@ void load_free_blocks() {
 }
 
 void save_node_metadata() {
-    log_syscall("ftruncate", ftruncate(root_node_metadata_fd, 0), 0);
-    lseek(root_node_metadata_fd, 0, SEEK_SET);
-    nodes_table_clear_foreach(root_node_metadata, save_node_metadata_element);
-    close(root_node_metadata_fd);
+    nodes_table_clear_foreach(root_node_metadata, save_node_metadata_element, root_node_metadata_fd);
 }
 
 void save_blocks_metadata() {
@@ -154,8 +200,40 @@ void save_free_blocks() {
     close(free_blocks_fd);
 }
 
-static void save_node_metadata_element(nodes_hash_element_t *element) {
+static void save_node_metadata_element(nodes_hash_element_t *element, int* fd) {
+    char curr_filename[NAME_MAX];
+    unsigned char curr_name_size;
+    int bytes_read;
 
+    nodes_hash_element_t* element;
+
+    // Delete previous file
+    log_syscall("ftruncate", ftruncate(fd, 0), 0);
+    lseek(fd, 0, SEEK_SET);
+
+    while (1) {
+        // Write entry's data to file
+        write(fd, &element->id, sizeof(unsigned long));
+
+        snprintf(curr_filename, "%s/", element->name, NAME_MAX);
+        curr_name_size = strnlen(curr_filename, NAME_MAX) + 1; // include \0
+
+        write(fd, &curr_name_size, sizeof(unsigned char));
+        write(fd, &curr_filename, curr_name_size);
+
+        // Check if entry is directory and call recursively
+        if (element->hashmap != NULL) {
+            char new_dir_path[PATH_MAX];
+            int new_dir_fd;
+
+            snprintf(new_dir_path, "%s%lu", BB_DATA->rootdir, element->id, PATH_MAX);
+            new_dir_fd = open(new_dir_path, O_WRONLY);
+
+            save_node_metadata_element(element->hashmap, new_dir_fd);
+        }
+    }
+
+    close(fd);
 }
 
 static void save_blocks_metadata_element(blocks_hash_element_t *element) {
