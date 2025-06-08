@@ -3,10 +3,10 @@
 #include <limits.h>
 #include <stdio.h>
 
-unsigned long last_id = 0;
+unsigned long last_id = -1;
 
 nodes_hash_element_t *nodes_table_add_new(nodes_hash_element_t **table, const char name[NAME_MAX]) {
-  	return nodes_table_add(table, name, last_id++);
+  	return nodes_table_add(table, name, ++last_id);
 }
 
 nodes_hash_element_t *nodes_table_add(nodes_hash_element_t **table, const char name[NAME_MAX], unsigned long id) {
@@ -59,9 +59,13 @@ void nodes_table_clear_foreach(nodes_hash_element_t *table, void (*func)(nodes_h
 }
 
 void nodes_table_clear(nodes_hash_element_t *table) {
-	nodes_table_clear_foreach(table, NULL);
+	nodes_table_clear_foreach(table, NULL, -1);
 }
 
 void set_last_id(unsigned long id) {
 	last_id = id;
+}
+
+unsigned long get_last_id() {
+	return last_id;
 }

@@ -270,4 +270,9 @@ int zeropad_file(int fd, ssize_t new_size);
 */
 int truncate_file(int fd, ssize_t new_size);
 
+/*
+    Gets the path of a directory and returns the hashtable of that directory.
+*/
+nodes_hash_element_t* get_node_hashtable_from_path(const char* path);
+
 #endif

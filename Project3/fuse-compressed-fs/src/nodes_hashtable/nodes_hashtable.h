@@ -26,4 +26,6 @@ void nodes_table_clear(nodes_hash_element_t *table);
 
 void set_last_id(unsigned long id);
 
+unsigned long get_last_id();
+
 #endif
