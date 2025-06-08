@@ -78,7 +78,7 @@ static ssize_t read_block(unsigned char buf[BLOCK_SIZE], off_t block_offset, ssi
 /*
     Saves a node metadata entry in the appropriate file.
 */
-static void save_node_metadata_element(nodes_hash_element_t *element);
+static void save_node_metadata_element(nodes_hash_element_t *element, int fd);
 
 /*
     Saves a metadata entry in the metadata file.
@@ -125,6 +125,10 @@ static void load_node_hashmap(int fd, nodes_hash_element_t* node_hashmap) {
         bytes_read = read(fd, &curr_node_id, sizeof(unsigned long));
         if (bytes_read == 0)
             return;
+
+        // Find max last id
+        if (curr_node_id > get_last_id())
+            set_last_id(curr_node_id);
 
         read(fd, &curr_name_size, sizeof(unsigned char));
         read(fd, &curr_filename, curr_name_size);
@@ -200,10 +204,10 @@ void save_free_blocks() {
     close(free_blocks_fd);
 }
 
-static void save_node_metadata_element(nodes_hash_element_t *element, int* fd) {
+static void save_node_metadata_element(nodes_hash_element_t *element, int fd) {
     char curr_filename[NAME_MAX];
     unsigned char curr_name_size;
-    int bytes_read;
+    int is_dir;
 
     nodes_hash_element_t* element;
 
@@ -212,24 +216,26 @@ static void save_node_metadata_element(nodes_hash_element_t *element, int* fd) {
     lseek(fd, 0, SEEK_SET);
 
     while (1) {
+        is_dir = element->hashmap != NULL;
+
         // Write entry's data to file
         write(fd, &element->id, sizeof(unsigned long));
 
-        snprintf(curr_filename, "%s/", element->name, NAME_MAX);
-        curr_name_size = strnlen(curr_filename, NAME_MAX) + 1; // include \0
+        snprintf(curr_filename, (is_dir) ? "%s/" : "%s", element->name, NAME_MAX);
+        curr_name_size = strnlen(curr_filename, NAME_MAX);
 
         write(fd, &curr_name_size, sizeof(unsigned char));
         write(fd, &curr_filename, curr_name_size);
 
         // Check if entry is directory and call recursively
-        if (element->hashmap != NULL) {
+        if (is_dir) {
             char new_dir_path[PATH_MAX];
             int new_dir_fd;
 
             snprintf(new_dir_path, "%s%lu", BB_DATA->rootdir, element->id, PATH_MAX);
             new_dir_fd = open(new_dir_path, O_WRONLY);
 
-            save_node_metadata_element(element->hashmap, new_dir_fd);
+            nodes_table_clear_foreach(element->hashmap, save_node_metadata_element, new_dir_fd);
         }
     }
 
@@ -624,4 +630,23 @@ int truncate_file(int fd, ssize_t new_size) {
     retstat = ftruncate(fd, new_real_size);
 
     return retstat < 0 ? ERROR : SUCCESS;
+}
+
+nodes_hash_element_t* get_node_hashtable_from_path(const char* path) {
+    char* directory_path[PATH_MAX] = dirname(path);
+
+    nodes_hash_element_t* curr_hashtable = root_node_metadata;
+
+    char *token = strtok(path, "/"); // Skip leading '/'
+
+    while (token != NULL) {
+        curr_hashtable = nodes_table_find(curr_hashtable, token);
+
+        if (curr_hashtable == NULL)
+            return NULL;
+
+        token = strtok(NULL, "/");
+    }
+
+    return curr_hashtable;
 }

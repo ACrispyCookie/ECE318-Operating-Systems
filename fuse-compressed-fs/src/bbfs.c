@@ -143,23 +143,34 @@ int bb_readlink(const char *path, char *link, size_t size)
 // shouldn't that comment be "if" there is no.... ?
 int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
-    ssize_t retstat;
     int fd;
-    char fpath[PATH_MAX];
-    char file_id_str[NAME_MAX];
+    ssize_t retstat;
+    char new_file_path[PATH_MAX];
+    char filename[NAME_MAX] = basename(path);
+
+    nodes_hash_element_t* directory_hashtable;
+    nodes_hash_element_t* new_node;
 
     log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n", path, mode, dev);
-    bb_fullpath(fpath, path);
 
-    // TODO: return error if file exists
-
-    retstat = log_syscall("mknod", mknod(fpath, mode, dev), 0);
-    if (retstat < 0)
+    // Get the hashtable of the directory the new node is about to be created in
+    directory_hashtable = get_node_hashtable_from_path(path);
+    if (directory_hashtable == NULL) {
+        errno = ENOENT;
         return ERROR;
+    }
 
-    // create_user_file(filename, file_id_str);
+    // Add the new node in the directory's hashtable
+    new_node = nodes_table_add_new(directory_hashtable, filename);
+    if (new_node == NULL) {
+        errno = EEXIST;
+        return ERROR;
+    }
 
-    retstat = log_syscall("open", fd = open(file_id_str, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
+    // Create the new file and write 0 as its last block size
+    snprintf(new_file_path, "%s%lu", BB_DATA->rootdir, new_node->id);
+
+    retstat = log_syscall("open", fd = open(new_file_path, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
     if (retstat < 0)
         return ERROR;
 
