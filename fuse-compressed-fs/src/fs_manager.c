@@ -1,11 +1,12 @@
 #include "fs_manager.h"
 #include "log.h"
 #include "params.h"
-#include <fuse.h>
+#include <libgen.h>
 #include <limits.h>
 #include <unistd.h>
 #include <string.h>
 #include <stdbool.h>
+#include <limits.h>
 #include <sys/stat.h>
 
 /* File descriptor for the blocks repository */
@@ -15,10 +16,10 @@ int blocks_fd, free_blocks_fd, blocks_metadata_fd, root_node_metadata_fd;
 list_t *free_blocks;
 
 /* Metadata hash table */
-blocks_hash_element_t *blocks_metadata;
+blocks_hash_element_t *blocks_metadata = NULL;
 
 /* Hashmap with key the file ids and value a hashmap */
-nodes_hash_element_t *root_node_metadata;
+nodes_hash_element_t *root_node_metadata = NULL;
 
 void sha1_print(unsigned char hash[HASH_SIZE]) {
     log_msg("SHA1 hash: ");
@@ -31,7 +32,7 @@ void sha1_print(unsigned char hash[HASH_SIZE]) {
 /*
     Load the node structure from disk to memory based on the metadata files.
 */
-static void load_node_hashmap(int fd, nodes_hash_element_t* node_hashmap);
+static void load_node_hashmap(int fd, nodes_hash_element_t** node_hashmap);
 
 /*
     Comparator for free_blocks list
@@ -102,19 +103,37 @@ static int index_comparator(void *num1, void *num2) {
     return (diff > 0) - (diff < 0);
 }
 
+void safe_dirname(const char *path, char output[PATH_MAX]) {
+    char copy[PATH_MAX];
+    strncpy(copy, path, PATH_MAX - 1);
+
+    char *res = dirname(copy);
+    log_msg("safe_dirname: path %s, res %s\n", path, res);
+    strncpy(output, res, PATH_MAX - 1);
+}
+
+void safe_basename(const char *path, char output[PATH_MAX]) {
+    char copy[PATH_MAX];
+    strncpy(copy, path, PATH_MAX - 1);
+
+    char *res = basename(copy);
+    strncpy(output, res, PATH_MAX - 1);
+}
+
 /* ###################################################################################### */
 /* ################################# LOAD/SAVE FUNCTIONS ################################ */
 /* ###################################################################################### */
 
 void load_node_metadata() {
     // Load root folder hashmap
-    load_node_hashmap(root_node_metadata_fd, root_node_metadata);
+    nodes_table_add(&root_node_metadata, "/", true, - 1);
+    load_node_hashmap(root_node_metadata_fd, &(root_node_metadata->hashmap));
 }
 
-static void load_node_hashmap(int fd, nodes_hash_element_t* node_hashmap) {
+static void load_node_hashmap(int fd, nodes_hash_element_t** node_hashmap) {
     unsigned long curr_node_id;
     unsigned char curr_name_size;
-    char curr_filename[NAME_MAX];
+    char curr_filename[NAME_MAX + 1];
     int bytes_read;
     bool is_dir;
 
@@ -122,7 +141,7 @@ static void load_node_hashmap(int fd, nodes_hash_element_t* node_hashmap) {
 
     while (1) {
         // Read entry's data from file
-        bytes_read = read(fd, &curr_node_id, sizeof(unsigned long));
+        bytes_read = log_syscall("read", read(fd, &curr_node_id, sizeof(unsigned long)), 0);
         if (bytes_read == 0)
             return;
 
@@ -130,16 +149,15 @@ static void load_node_hashmap(int fd, nodes_hash_element_t* node_hashmap) {
         if (curr_node_id > get_last_id())
             set_last_id(curr_node_id);
 
-        read(fd, &curr_name_size, sizeof(unsigned char));
-        read(fd, &curr_filename, curr_name_size);
-
+        log_syscall("read", read(fd, &curr_name_size, sizeof(unsigned char)), 0);
+        log_syscall("read", read(fd, &curr_filename, curr_name_size * sizeof(char)), 0);
         is_dir = curr_filename[curr_name_size - 1] == '/';
 
         // Replace slash with \0 if is dir or at the end of the name for a file
-        curr_filename[curr_name_size - (is_dir) ? 0 : 1] = '\0';
+        curr_filename[curr_name_size - ((is_dir) ? 1 : 0)] = '\0';
 
         // Add entry to hashmap
-        element = nodes_table_add(node_hashmap, curr_filename, curr_node_id);
+        element = nodes_table_add(node_hashmap, curr_filename, is_dir, curr_node_id);
 
         // Check if entry is directory and call recursively
         if (is_dir) {
@@ -149,7 +167,7 @@ static void load_node_hashmap(int fd, nodes_hash_element_t* node_hashmap) {
             snprintf(new_dir_path, PATH_MAX, "%s%lu", BB_DATA->rootdir, curr_node_id);
             new_dir_fd = open(new_dir_path, O_RDONLY);
 
-            load_node_hashmap(new_dir_fd, element->hashmap);
+            load_node_hashmap(new_dir_fd, &(element->hashmap));
 
             close(new_dir_fd);
         }
@@ -187,7 +205,8 @@ void load_free_blocks() {
 }
 
 void save_node_metadata() {
-    nodes_table_clear_foreach(root_node_metadata, save_node_metadata_element, root_node_metadata_fd);
+    nodes_table_clear_foreach(root_node_metadata->hashmap, save_node_metadata_element, root_node_metadata_fd);
+    nodes_table_clear(root_node_metadata);
 }
 
 void save_blocks_metadata() {
@@ -205,38 +224,32 @@ void save_free_blocks() {
 }
 
 static void save_node_metadata_element(nodes_hash_element_t *element, int fd) {
-    char curr_filename[NAME_MAX];
+    char curr_filename[NAME_MAX + 2];
     unsigned char curr_name_size;
-    int is_dir;
-
-    nodes_hash_element_t* element;
+    int is_dir = element->is_dir;
 
     // Delete previous file
     log_syscall("ftruncate", ftruncate(fd, 0), 0);
     lseek(fd, 0, SEEK_SET);
 
-    while (1) {
-        is_dir = element->hashmap != NULL;
+    // Write entry's data to file
+    log_syscall("write", write(fd, &element->id, sizeof(unsigned long)), 0);
 
-        // Write entry's data to file
-        write(fd, &element->id, sizeof(unsigned long));
+    sprintf(curr_filename, (is_dir) ? "%s/" : "%s", element->name);
+    curr_name_size = strnlen(curr_filename, NAME_MAX);
 
-        snprintf(curr_filename, NAME_MAX, (is_dir) ? "%s/" : "%s", element->name);
-        curr_name_size = strnlen(curr_filename, NAME_MAX);
+    log_syscall("write", write(fd, &curr_name_size, sizeof(unsigned char)), 0);
+    log_syscall("write", write(fd, &curr_filename, curr_name_size), 0);
 
-        write(fd, &curr_name_size, sizeof(unsigned char));
-        write(fd, &curr_filename, curr_name_size);
+    // Check if entry is directory and call recursively
+    if (is_dir) {
+        char new_dir_path[PATH_MAX];
+        int new_dir_fd;
 
-        // Check if entry is directory and call recursively
-        if (is_dir) {
-            char new_dir_path[PATH_MAX];
-            int new_dir_fd;
+        snprintf(new_dir_path, PATH_MAX, "%s%lu", BB_DATA->rootdir, element->id);
+        new_dir_fd = open(new_dir_path, O_WRONLY);
 
-            snprintf(new_dir_path, PATH_MAX, "%s%lu", BB_DATA->rootdir, element->id);
-            new_dir_fd = open(new_dir_path, O_WRONLY);
-
-            nodes_table_clear_foreach(element->hashmap, save_node_metadata_element, new_dir_fd);
-        }
+        nodes_table_clear_foreach(element->hashmap, save_node_metadata_element, new_dir_fd);
     }
 
     close(fd);
@@ -439,6 +452,51 @@ static ssize_t write_hash_to_file(int fd, unsigned char *hash, off_t block_offse
     return retstat < 0 ? ERROR : retstat;
 }
 
+nodes_hash_element_t *add_file_node(const char *path, bool is_dir) {
+    char file_name[PATH_MAX];
+    safe_basename(path, file_name);
+    nodes_hash_element_t *dir = get_dir_node_from_path(path);
+
+    return nodes_table_add_new(&(dir->hashmap), file_name, is_dir);
+}
+
+int remove_file_node(const char *path) {
+    char file_name[PATH_MAX];
+    safe_basename(path, file_name);
+    nodes_hash_element_t *dir = get_dir_node_from_path(path);
+
+    return nodes_table_remove(&(dir->hashmap), file_name);
+}
+
+nodes_hash_element_t *get_dir_node_from_path(const char *path) {
+    log_msg("=====================================================\n");
+    log_msg("path_copy: %s\n", path);
+    char directory_path[PATH_MAX]; 
+    safe_dirname(path, directory_path);
+    log_msg("root_node %p\n", root_node_metadata);
+    nodes_hash_element_t *curr_hashtable = root_node_metadata;
+
+    log_msg("path: %s directory_path: %s\n", path, directory_path);
+    char *token = strtok(directory_path, "/"); // Skip leading '/'
+    log_msg("token: %s\n", token);
+
+    while (token != NULL) {
+        // nodes_table_print(curr_hashtable->hashmap);
+        curr_hashtable = nodes_table_find(curr_hashtable->hashmap, token);
+
+        if (curr_hashtable == NULL) {
+            log_msg("=====================================================\n");
+            return NULL;
+        }
+
+        token = strtok(NULL, "/");
+        log_msg("token: %s\n", token);
+    }
+    log_msg("=====================================================\n");
+
+    return curr_hashtable;
+}
+
 ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block_offset_t block_offset, short byte_count) {
     int retstat;
     if (byte_count <= 0)
@@ -630,23 +688,4 @@ int truncate_file(int fd, ssize_t new_size) {
     retstat = ftruncate(fd, new_real_size);
 
     return retstat < 0 ? ERROR : SUCCESS;
-}
-
-nodes_hash_element_t* get_node_hashtable_from_path(const char* path) {
-    char* directory_path[PATH_MAX] = dirname(path);
-
-    nodes_hash_element_t* curr_hashtable = root_node_metadata;
-
-    char *token = strtok(path, "/"); // Skip leading '/'
-
-    while (token != NULL) {
-        curr_hashtable = nodes_table_find(curr_hashtable, token);
-
-        if (curr_hashtable == NULL)
-            return NULL;
-
-        token = strtok(NULL, "/");
-    }
-
-    return curr_hashtable;
 }

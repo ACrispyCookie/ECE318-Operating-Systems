@@ -6,19 +6,22 @@
 #include "../uthash.h"
 
 typedef struct nodes_element {
-    char name[NAME_MAX];
+    char name[NAME_MAX + 1];
     unsigned long id;
-    struct nodes_element *hashmap;
+    bool is_dir;
+    struct nodes_element * hashmap;
     UT_hash_handle hh;
 } nodes_hash_element_t;
 
-nodes_hash_element_t *nodes_table_add_new(nodes_hash_element_t **table, const char name[NAME_MAX]);
+nodes_hash_element_t *nodes_table_add_new(nodes_hash_element_t **table, const char name[NAME_MAX + 1], bool is_dir);
 
-nodes_hash_element_t *nodes_table_add(nodes_hash_element_t **table, const char name[NAME_MAX], unsigned long id);
+nodes_hash_element_t *nodes_table_add(nodes_hash_element_t **table, const char name[NAME_MAX + 1], bool is_dir, unsigned long id);
 
-nodes_hash_element_t *nodes_table_find(nodes_hash_element_t *table, const char name[NAME_MAX]);
+nodes_hash_element_t *nodes_table_find(nodes_hash_element_t *table, const char name[NAME_MAX + 1]);
 
-int nodes_table_remove(nodes_hash_element_t **table, const char name[NAME_MAX]);
+int nodes_table_remove(nodes_hash_element_t **table, const char name[NAME_MAX + 1]);
+
+void nodes_table_print(nodes_hash_element_t *table);
 
 void nodes_table_clear_foreach(nodes_hash_element_t *table, void (*func)(nodes_hash_element_t *, int), int fd);
 

@@ -28,6 +28,7 @@
 #define BLOCKS_METADATA_PATH "/metadata"
 #define DATA_PATH "/data"
 #define ROOT_PATH "/data/root"
+#define ROOT_FOLDER_PERMISSIONS 0777
 #define STORAGE_FILES_PERMISSIONS 0664
 #define USER_FOLDER_PERMISSIONS 0774
 
@@ -62,6 +63,20 @@ extern blocks_hash_element_t *blocks_metadata;
 
 /* Node hash table */
 extern nodes_hash_element_t *root_node_metadata;
+
+/* ###################################################################################### */
+/* ################################## UTILITY FUNCTIONS ################################# */
+/* ###################################################################################### */
+
+/*
+    Safe dir name that accepts a constant string.
+*/
+void safe_dirname(const char *path, char output[PATH_MAX]);
+
+/*
+    Safe base name that accepts a constant string.
+*/
+void safe_basename(const char *path, char output[PATH_MAX]);
 
 /* ###################################################################################### */
 /* ################################# LOAD/SAVE FUNCTIONS ################################ */
@@ -191,6 +206,12 @@ ssize_t read_metadata_from_file(int fd, unsigned char buf[VIRTFILE_METADATA_SIZE
 */
 ssize_t write_metadata_to_file(int fd, const unsigned char buf[VIRTFILE_METADATA_SIZE]);
 
+nodes_hash_element_t *get_dir_node_from_path(const char *path);
+
+nodes_hash_element_t *add_file_node(const char *path, bool is_dir);
+
+int remove_file_node(const char *path);
+
 /*
     Read byte_count bytes from a file at a given block and offset.
 
@@ -269,10 +290,5 @@ int zeropad_file(int fd, ssize_t new_size);
     ERROR - on error
 */
 int truncate_file(int fd, ssize_t new_size);
-
-/*
-    Gets the path of a directory and returns the hashtable of that directory.
-*/
-nodes_hash_element_t* get_node_hashtable_from_path(const char* path);
 
 #endif
