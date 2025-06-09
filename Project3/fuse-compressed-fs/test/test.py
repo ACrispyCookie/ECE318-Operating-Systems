@@ -29,6 +29,16 @@ def mount_bbfs():
 
 
 def unmount_bbfs():
+    # Cleanup root contents
+    if os.path.exists(ROOT):
+        for item in os.listdir(ROOT):
+            item_path = os.path.join(ROOT, item)
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+            else:
+                os.remove(item_path)
+
+    # Unmount the filesystem
     os.system(f"fusermount -u {MNT}")
 
 
