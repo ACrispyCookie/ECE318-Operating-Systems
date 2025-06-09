@@ -237,6 +237,25 @@ class TestNodes(unittest.TestCase):
 
         self.assertFalse(os.path.isdir(nested_dir_path))
 
+    def test_create_multiple_directories_and_files(self):
+        # Create multiple directories and files
+        for i in range(3):
+            dir_path = os.path.join(MNT, f"test_directory_{i}")
+            os.makedirs(dir_path, exist_ok=True)
+
+            for j in range(2):
+                file_path = os.path.join(dir_path, f"test_file_{j}.txt")
+                with open(file_path, "w") as f:
+                    f.write(f"This is test file {j} in directory {i}.")
+
+            # Verify directories and files were created
+            self.assertTrue(os.path.isdir(dir_path))
+            for j in range(2):
+                self.assertTrue(os.path.isfile(os.path.join(dir_path, f"test_file_{j}.txt")))
+
+            # Clean up the directories
+            shutil.rmtree(dir_path)
+            self.assertFalse(os.path.isdir(dir_path))
 
 if __name__ == "__main__":
     print("Starting filesystems tests\n")
