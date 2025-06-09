@@ -1,16 +1,35 @@
 import os
+import io
 import sys
 import string
 import random
 import unittest
+import shutil
 
 BLOCK_SIZE = 4096
 
 CWD = os.path.dirname(os.path.abspath(__file__))
-MNT = os.path.abspath(os.path.join(CWD, "../example/mountdir/"))
-ROOT = os.path.abspath(os.path.join(CWD, "../example/rootdir/"))
+MNT = os.path.abspath(os.path.join(CWD, "./fs/mountdir/"))
+ROOT = os.path.abspath(os.path.join(CWD, "./fs/rootdir/"))
+
+BBFS_EXECUTABLE_PATH = os.path.abspath(os.path.join(CWD, "../src/bbfs"))
 
 BLOCKS_REPOSITORY_PATH = os.path.join(ROOT, "blocks")
+
+
+def mount_bbfs():
+    if not os.path.exists(MNT):
+        os.makedirs(MNT)
+    if not os.path.exists(ROOT):
+        os.makedirs(ROOT)
+
+    # Ensure the executable runs in the directory the tests are in to generate logs
+    os.chdir(CWD)
+    os.system(f"{BBFS_EXECUTABLE_PATH} {ROOT} {MNT} 2> /dev/null")
+
+
+def unmount_bbfs():
+    os.system(f"fusermount -u {MNT}")
 
 
 def random_data(size: int) -> bytes:
@@ -18,237 +37,165 @@ def random_data(size: int) -> bytes:
 
 
 class TestBlocks(unittest.TestCase):
-    def setUp(self):
-        # Create and open test and original files
-        self.cwd_f_path = os.path.join(CWD, "bogus")
-        self.mnt_f_path = os.path.join(MNT, "bogus")
+    @classmethod
+    def setUpClass(cls):
+        mount_bbfs()
 
-        self.cwd_f = open(self.cwd_f_path, "wb")
-        self.mnt_f = open(self.mnt_f_path, "wb")
+    @classmethod
+    def tearDownClass(cls):
+        unmount_bbfs()
+
+    def setUp(self):
+        self.f_path = os.path.join(MNT, "bogus")
 
     def tearDown(self):
-        # Close the files if still open
-        if not self.cwd_f.closed:
-            self.cwd_f.close()
-
-        if not self.mnt_f.closed:
-            self.mnt_f.close()
-
-        # Cleanup the files
         try:
-            os.remove(self.cwd_f_path)
+            os.remove(self.f_path)
         except FileNotFoundError:
             pass
 
-        try:
-            os.remove(self.mnt_f_path)
-        except FileNotFoundError:
-            pass
+    def write_and_read(self, data, truncate_to=None, overwrite_at=None, overwrite_chunk=None):
+        with open(self.f_path, "wb+") as f:
+            f.write(data)
+            if overwrite_at is not None and overwrite_chunk is not None:
+                f.seek(overwrite_at)
+                f.write(overwrite_chunk)
+            if truncate_to is not None:
+                os.ftruncate(f.fileno(), truncate_to)
+
+        with open(self.f_path, "rb") as f:
+            return f.read()
 
     def test_write_one_block(self):
-        # Write one block on both files
         data = random_data(BLOCK_SIZE)
-
-        self.cwd_f.write(data)
-        self.cwd_f.close()
-
-        self.mnt_f.write(data)
-        self.mnt_f.close()
-
-        with open(self.cwd_f_path, "rb") as cwd_f, open(self.mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
-
-        self.assertEqual(cwd_data, mnt_data)
+        read_back = self.write_and_read(data)
+        self.assertEqual(read_back, data)
 
     def test_write_ten_blocks(self):
-        # Write ten blocks on both files
         data = random_data(BLOCK_SIZE * 10)
-
-        self.cwd_f.write(data)
-        self.cwd_f.close()
-
-        self.mnt_f.write(data)
-        self.mnt_f.close()
-
-        with open(self.cwd_f_path, "rb") as cwd_f, open(self.mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
-
-        self.assertEqual(cwd_data, mnt_data)
+        read_back = self.write_and_read(data)
+        self.assertEqual(read_back, data)
 
     def test_write_ten_and_a_half_blocks(self):
-        # Write ten and a half blocks on both files
         data = random_data(int(BLOCK_SIZE * 10.5))
-
-        self.cwd_f.write(data)
-        self.cwd_f.close()
-
-        self.mnt_f.write(data)
-        self.mnt_f.close()
-
-        with open(self.cwd_f_path, "rb") as cwd_f, open(self.mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
-
-        self.assertEqual(cwd_data, mnt_data)
+        read_back = self.write_and_read(data)
+        self.assertEqual(read_back, data)
 
     def test_overwrite_blocks_data(self):
-        # Write five and a half blocks on both files and write
-        # a random chunk that is one tenth of a block
         data = random_data(int(BLOCK_SIZE * 5.5))
         chunk = random_data(int(BLOCK_SIZE / 10))
+        offset = BLOCK_SIZE * 3
+        read_back = self.write_and_read(data, overwrite_at=offset, overwrite_chunk=chunk)
 
-        self.cwd_f.write(data)
-        self.cwd_f.seek(BLOCK_SIZE * 3)
-        self.cwd_f.write(chunk)
-        self.cwd_f.close()
-
-        self.mnt_f.write(data)
-        self.mnt_f.seek(BLOCK_SIZE * 3)
-        self.mnt_f.write(chunk)
-        self.mnt_f.close()
-
-        with open(self.cwd_f_path, "rb") as cwd_f, open(self.mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
-
-        self.assertEqual(cwd_data, mnt_data)
+        expected = bytearray(data)
+        expected[offset:offset+len(chunk)] = chunk
+        self.assertEqual(read_back, bytes(expected))
 
     def test_compression(self):
-        # Write ten and a half blocks on first set of files
+        # Write the same data to the same file twice
         data = random_data(int(BLOCK_SIZE * 10.5))
+        file1_path = os.path.join(MNT, "file1")
+        file2_path = os.path.join(MNT, "file2")
 
-        self.cwd_f.write(data)
-        self.cwd_f.close()
+        with open(file1_path, "wb") as f1, open(file2_path, "wb") as f2:
+            f1.write(data)
+            f2.write(data)
 
-        self.mnt_f.write(data)
-        self.mnt_f.close()
+        with open(file1_path, "rb") as f1, open(file2_path, "rb") as f2:
+            self.assertEqual(f1.read(), f2.read())
 
-        # Write the same data on the second set of files
-        cwd_f_path = os.path.join(CWD, "first_file.txt")
-        mnt_f_path = os.path.join(MNT, "first_file.txt")
+        # Assert block-level deduplication
+        expected_size = BLOCK_SIZE * 11
+        actual_size = os.stat(BLOCKS_REPOSITORY_PATH).st_size
 
-        cwd_f = open(cwd_f_path, "wb")
-        cwd_f.write(data)
-        cwd_f.close()
+        self.assertEqual(actual_size, expected_size)
 
-        mnt_f = open(mnt_f_path, "wb")
-        mnt_f.write(data)
-        mnt_f.close()
-
-        with open(cwd_f_path, "rb") as cwd_f, open(mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
-
-        self.assertEqual(cwd_data, mnt_data)
-
-        # Assert the size of the blocks repository file being
-        # only ten and a half blocks
-        self.assertEqual(os.stat(BLOCKS_REPOSITORY_PATH).st_size, BLOCK_SIZE * 11)
+        os.remove(file1_path)
+        os.remove(file2_path)
 
     def test_ftruncate_files(self):
-        # Write five and a half blocks on both files
         data = random_data(int(BLOCK_SIZE * 5.5))
-
-        # Truncate both files to two blocks
-        self.cwd_f.write(data)
-        os.ftruncate(self.cwd_f.fileno(), int(BLOCK_SIZE * 2))
-        self.cwd_f.close()
-
-        self.mnt_f.write(data)
-        os.ftruncate(self.mnt_f.fileno(), int(BLOCK_SIZE * 2))
-        self.mnt_f.close()
-
-        with open(self.cwd_f_path, "rb") as cwd_f, open(self.mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
-
-        self.assertEqual(cwd_data, mnt_data)
+        truncated = self.write_and_read(data, truncate_to=BLOCK_SIZE * 2)
+        self.assertEqual(truncated, data[:BLOCK_SIZE * 2])
 
     def test_add_zero_padding_to_files_with_ftruncate(self):
-        # Write ten and a five blocks on both files
         data = random_data(int(BLOCK_SIZE * 5.5))
+        padded = self.write_and_read(data, truncate_to=BLOCK_SIZE * 10)
 
-        # Add padding on both files until reaching ten blocks with ftruncate
-        self.cwd_f.write(data)
-        os.ftruncate(self.cwd_f.fileno(), BLOCK_SIZE * 10)
-        self.cwd_f.close()
-
-        self.mnt_f.write(data)
-        os.ftruncate(self.mnt_f.fileno(), BLOCK_SIZE * 10)
-        self.mnt_f.close()
-
-        with open(self.cwd_f_path, "rb") as cwd_f, open(self.mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
-
-        self.assertEqual(cwd_data, mnt_data)
+        expected = data + b'\x00' * (BLOCK_SIZE * 10 - len(data))
+        self.assertEqual(padded, expected)
 
     def test_defragmentation(self):
-        # Write ten and a half blocks on first set of files
-        data = random_data(int(BLOCK_SIZE * 10.5))
+        file1_path = os.path.join(MNT, "file1")
+        file2_path = os.path.join(MNT, "file2")
 
-        self.cwd_f.write(data)
-        self.cwd_f.close()
+        # Step 1: Write large data to file1
+        data1 = random_data(int(BLOCK_SIZE * 10.5))
+        with open(file1_path, "wb") as f:
+            f.write(data1)
 
-        self.mnt_f.write(data)
-        self.mnt_f.close()
+        # Step 2: Write smaller data to file2
+        data2 = random_data(int(BLOCK_SIZE * 5.5))
+        with open(file2_path, "wb") as f:
+            f.write(data2)
 
-        with open(self.cwd_f_path, "rb") as cwd_f, open(self.mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
+        # Step 3: Truncate file1 to simulate fragmentation
+        with open(file1_path, "ab") as f:
+            os.ftruncate(f.fileno(), int(BLOCK_SIZE * 0.5))
 
-        self.assertEqual(cwd_data, mnt_data)
+        # Validate final contents
+        with open(file1_path, "rb") as f1, open(file2_path, "rb") as f2:
+            self.assertEqual(f1.read(), data1[:int(BLOCK_SIZE * 0.5)])
+            self.assertEqual(f2.read(), data2)
 
-        # Write five and a half blocks on second set of files
-        data = random_data(int(BLOCK_SIZE * 5.5))
+        os.remove(file1_path)
+        os.remove(file2_path)
 
-        cwd_f_path = os.path.join(CWD, "first_file.txt")
-        mnt_f_path = os.path.join(MNT, "first_file.txt")
 
-        cwd_f = open(cwd_f_path, "wb")
-        cwd_f.write(data)
-        cwd_f.close()
+class TestNodes(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        mount_bbfs()
 
-        mnt_f = open(mnt_f_path, "wb")
-        mnt_f.write(data)
-        mnt_f.close()
+    @classmethod
+    def tearDownClass(cls):
+        unmount_bbfs()
 
-        with open(cwd_f_path, "rb") as cwd_f, open(mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
+    def test_create_and_remove_directory(self):
+        # Create directory in the mount point
+        dir_path = os.path.join(MNT, "test_directory")
+        os.makedirs(dir_path, exist_ok=True)
 
-        self.assertEqual(cwd_data, mnt_data)
+        self.assertTrue(os.path.isdir(dir_path))
 
-        # Truncate the first set of files to half a block to create fragmentation
-        # in the blocks repository and trigger defragmentation
-        self.cwd_f = open(self.cwd_f_path, "ab")
-        self.mnt_f = open(self.mnt_f_path, "ab")
+        # Clean up the directory
+        shutil.rmtree(dir_path)
+    
+        self.assertFalse(os.path.isdir(dir_path))
 
-        os.ftruncate(self.cwd_f.fileno(), int(BLOCK_SIZE * 0.5))
-        self.cwd_f.close()
+    def test_create_and_remove_file_and_directory(self):
+        # Create file in the directory
+        dir_path = os.path.join(MNT, "test_directory")
 
-        os.ftruncate(self.mnt_f.fileno(), int(BLOCK_SIZE * 0.5))
-        self.mnt_f.close()
+        os.makedirs(dir_path, exist_ok=True)
+        file_path = os.path.join(dir_path, "test_file.txt")
 
-        # Assert first set of files are equal
-        with open(self.cwd_f_path, "rb") as cwd_f, open(self.mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
+        with open(file_path, "w") as f:
+            f.write("This is a test file.")
 
-        self.assertEqual(cwd_data, mnt_data)
+        self.assertTrue(os.path.isfile(file_path))
 
-        # Assert second set of files are equal
-        with open(cwd_f_path, "rb") as cwd_f, open(mnt_f_path, "rb") as mnt_f:
-            cwd_data = cwd_f.read()
-            mnt_data = mnt_f.read()
+        # Clean up the directory
+        shutil.rmtree(dir_path)
 
-        self.assertEqual(cwd_data, mnt_data)
+        self.assertFalse(os.path.isdir(dir_path))
 
-        # Cleanup first set of files
-        os.remove(cwd_f_path)
-        os.remove(mnt_f_path)
 
 if __name__ == "__main__":
+    print("Starting filesystems tests\n")
+    print(f"FS executable at: {BBFS_EXECUTABLE_PATH}")
+    print(f"Mount directory at: {MNT}")
+    print(f"Root directory at: {ROOT}")
+    print()
+
     unittest.main()
