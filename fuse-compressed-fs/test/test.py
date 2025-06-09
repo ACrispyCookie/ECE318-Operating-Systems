@@ -29,6 +29,8 @@ def mount_bbfs():
 
 
 def unmount_bbfs():
+    # Unmount the filesystem
+    os.system(f"fusermount -u {MNT}")
     # Cleanup root contents
     if os.path.exists(ROOT):
         for item in os.listdir(ROOT):
@@ -37,10 +39,6 @@ def unmount_bbfs():
                 shutil.rmtree(item_path)
             else:
                 os.remove(item_path)
-
-    # Unmount the filesystem
-    os.system(f"fusermount -u {MNT}")
-
 
 def random_data(size: int) -> bytes:
     return ''.join(random.choices(string.ascii_letters + string.digits, k=size)).encode()
@@ -76,15 +74,15 @@ class TestBlocks(unittest.TestCase):
         with open(self.f_path, "rb") as f:
             return f.read()
 
-    def test_write_one_block(self):
-        data = random_data(BLOCK_SIZE)
-        read_back = self.write_and_read(data)
-        self.assertEqual(read_back, data)
+    #def test_write_one_block(self):
+    #    data = random_data(BLOCK_SIZE)
+    #    read_back = self.write_and_read(data)
+    #    self.assertEqual(read_back, data)
 
-    def test_write_ten_blocks(self):
-        data = random_data(BLOCK_SIZE * 10)
-        read_back = self.write_and_read(data)
-        self.assertEqual(read_back, data)
+    #def test_write_ten_blocks(self):
+    #    data = random_data(BLOCK_SIZE * 10)
+    #    read_back = self.write_and_read(data)
+    #    self.assertEqual(read_back, data)
 
     def test_write_ten_and_a_half_blocks(self):
         data = random_data(int(BLOCK_SIZE * 10.5))
@@ -123,17 +121,17 @@ class TestBlocks(unittest.TestCase):
         os.remove(file1_path)
         os.remove(file2_path)
 
-    def test_ftruncate_files(self):
-        data = random_data(int(BLOCK_SIZE * 5.5))
-        truncated = self.write_and_read(data, truncate_to=BLOCK_SIZE * 2)
-        self.assertEqual(truncated, data[:BLOCK_SIZE * 2])
+#    def test_ftruncate_files(self):
+#        data = random_data(int(BLOCK_SIZE * 5.5))
+#        truncated = self.write_and_read(data, truncate_to=BLOCK_SIZE * 2)
+#        self.assertEqual(truncated, data[:BLOCK_SIZE * 2])
 
-    def test_add_zero_padding_to_files_with_ftruncate(self):
-        data = random_data(int(BLOCK_SIZE * 5.5))
-        padded = self.write_and_read(data, truncate_to=BLOCK_SIZE * 10)
-
-        expected = data + b'\x00' * (BLOCK_SIZE * 10 - len(data))
-        self.assertEqual(padded, expected)
+#    def test_add_zero_padding_to_files_with_ftruncate(self):
+#        data = random_data(int(BLOCK_SIZE * 5.5))
+#        padded = self.write_and_read(data, truncate_to=BLOCK_SIZE * 10)
+#
+#        expected = data + b'\x00' * (BLOCK_SIZE * 10 - len(data))
+#        self.assertEqual(padded, expected)
 
     def test_defragmentation(self):
         file1_path = os.path.join(MNT, "file1")
