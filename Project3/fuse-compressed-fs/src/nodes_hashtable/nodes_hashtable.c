@@ -39,6 +39,27 @@ int nodes_table_remove(nodes_hash_element_t **table, const char name[NAME_MAX + 
 	return 0;
 }
 
+int nodes_table_add_element(nodes_hash_element_t **table, nodes_hash_element_t *element) {
+	nodes_hash_element_t *found;
+	HASH_FIND_STR(*table, element->name, found);
+	if (found != NULL)
+		return 1;
+
+	HASH_ADD_STR(*table, name, element);
+	return 0;
+}
+
+int nodes_table_remove_element(nodes_hash_element_t **table, nodes_hash_element_t *element) {
+	nodes_hash_element_t *found;
+
+	HASH_FIND_STR(*table, element->name, found);
+	if (found == NULL)
+		return 1;
+	
+	HASH_DEL(*table, found);
+	return 0;
+}
+
 nodes_hash_element_t *nodes_table_find(nodes_hash_element_t *table, const char name[NAME_MAX + 1]) {
     nodes_hash_element_t *element;
 

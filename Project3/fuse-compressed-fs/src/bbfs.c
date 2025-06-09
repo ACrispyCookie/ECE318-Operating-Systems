@@ -76,6 +76,7 @@ static int bb_fullpath(char real_path[PATH_MAX], const char *virtual_path, nodes
     if (dir_table == NULL)
         return ERROR;
 
+    if (dir_hashtable != NULL) *dir_hashtable = dir_table;
     strncpy(real_path, BB_DATA->rootdir, PATH_MAX - 1);
     strncat(real_path, DATA_PATH, PATH_MAX - 1);
 
@@ -84,7 +85,6 @@ static int bb_fullpath(char real_path[PATH_MAX], const char *virtual_path, nodes
     if (node_entry == NULL)
         return ERROR;
 
-    if (dir_hashtable != NULL) *dir_hashtable = dir_table;
     if (file_hashtable != NULL) *file_hashtable = node_entry;
     snprintf(node_id_str, NAME_MAX + 1, "/%lu", node_entry->id);
     strncat(real_path, node_id_str, PATH_MAX - 1); // ridiculously long paths will break here
@@ -121,6 +121,8 @@ int bb_getattr(const char *path, struct stat *statbuf)
 
     log_syscall("lstat", lstat(fpath, statbuf), 0);
     log_stat(statbuf);
+
+    // nodes_table_print(root_node_metadata);
 
     // If it is a directory
     if (element->is_dir) {
@@ -273,8 +275,10 @@ int bb_unlink(const char *path)
 	    path);
     bb_fullpath(fpath, path, NULL, &file_table);
     
+    if (file_table == NULL)
+        return -ENOENT;
     if (file_table->is_dir)
-        return EISDIR;
+        return -EISDIR;
 
     retstat = log_syscall("open", fd = open(fpath, O_RDWR), 0);
     if (retstat < 0) return -1;
@@ -304,10 +308,12 @@ int bb_rmdir(const char *path)
     log_msg("bb_rmdir(path=\"%s\")\n",
 	    path);
     bb_fullpath(fpath, path, NULL, &file_table);
-
+    
+    if (file_table == NULL)
+        return -ENOENT;
     if (!file_table->is_dir)
         return -ENOTDIR;
-    else if (file_table->hashmap != NULL)
+    if (file_table->hashmap != NULL)
         return -ENOTEMPTY;
     
     retstat = remove_file_node(path);
@@ -327,10 +333,14 @@ int bb_rmdir(const char *path)
 int bb_symlink(const char *path, const char *link)
 {
     char flink[PATH_MAX];
+    nodes_hash_element_t *file_table;
     
     log_msg("\nbb_symlink(path=\"%s\", link=\"%s\")\n",
 	    path, link);
-    bb_fullpath(flink, link, NULL, NULL);
+    bb_fullpath(flink, path, NULL, &file_table);
+    
+    if (file_table == NULL)
+        return -ENOENT;
 
     return log_syscall("symlink", symlink(path, flink), 0);
 }
@@ -341,13 +351,80 @@ int bb_rename(const char *path, const char *newpath)
 {
     char fpath[PATH_MAX];
     char fnewpath[PATH_MAX];
-    nodes_hash_element_t *file_table;
+    int retstat;
+    nodes_hash_element_t *dir_entry = NULL;
+    nodes_hash_element_t *file_entry = NULL;
+    nodes_hash_element_t *new_dir_entry = NULL;
+    nodes_hash_element_t *new_file_entry = NULL;
     
     log_msg("\nbb_rename(fpath=\"%s\", newpath=\"%s\")\n",
 	    path, newpath);
-    bb_fullpath(fpath, path, NULL, &file_table);
+    bb_fullpath(fpath, path, &dir_entry, &file_entry);
+    bb_fullpath(fnewpath, newpath, &new_dir_entry, &new_file_entry);
+    log_msg("   old path: %s new path: %s old_real_path: %s new_real_path: %s dir_entry: %p file_entry: %p new_dir_entry %p new_file_entry %p\n", path, newpath, fpath, fnewpath, 
+        dir_entry, file_entry, new_dir_entry, new_file_entry);
+    nodes_table_print(root_node_metadata->hashmap);
+    log_msg("a-2\n");
 
-    return log_syscall("rename", rename(fpath, fnewpath), 0);
+    if (file_entry == new_file_entry && dir_entry == new_dir_entry)
+        return SUCCESS;
+    log_msg("a-1\n");
+    
+    if (file_entry == NULL || new_dir_entry == NULL)
+        return -ENOENT;
+    log_msg("a0\n");
+
+    // File to be renamed is a dir and a regular file exists in the new path
+    if (file_entry->is_dir && new_file_entry != NULL && !new_file_entry->is_dir)
+        return -EEXIST;
+
+    // Remove file to be renamed from the old directory
+    log_msg("a1\n");
+    retstat = nodes_table_remove_element(&(dir_entry->hashmap), file_entry);
+    log_msg("a2 %d\n", retstat);
+    if (retstat < 0)
+        return ERROR;
+
+    // File exists in the new path and is of the same type
+    if (new_file_entry != NULL && new_file_entry->is_dir == file_entry->is_dir) {
+        log_msg("a3\n");
+        // Remove old file
+        int fd;
+        retstat = log_syscall("open", fd = open(fnewpath, O_RDWR), 0);
+        if (retstat < 0) return -1;
+
+        retstat = truncate_file(fd, 0);
+        if (retstat == ERROR) return -1;
+
+        retstat = log_syscall("close", close(fd), 0);
+        if (retstat < 0) return -1;
+
+        retstat = log_syscall("unlink", unlink(fnewpath), 0);
+        if (retstat < 0) return -1;
+
+        // Replace old file entry
+        new_file_entry->id = file_entry->id;
+        new_file_entry->hashmap = file_entry->hashmap;
+        free(file_entry);
+
+        return SUCCESS;
+    }
+
+    // Change name 
+    char new_dir_name[NAME_MAX];
+    log_msg("a44 %s\n", newpath);
+    safe_basename(newpath, new_dir_name);
+    strcpy(file_entry->name, new_dir_name);
+    log_msg("a4 %s\n", new_dir_name);
+
+    log_msg("a5\n");
+    retstat = nodes_table_add_element(&(new_dir_entry->hashmap), file_entry);
+    log_msg("a6 %d\n", retstat);
+    if (retstat < 0)
+        return ERROR;
+
+    log_msg("a7\n");
+    return SUCCESS;
 }
 
 /** Create a hard link to a file */
@@ -486,6 +563,7 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;
 
     // Read first block
+    log_msg("read_path %s fd %d size %ld off %ld\n", path, fi->fh, size, offset);
     retstat = read_block_from_file(fi->fh, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
     if (retstat == ERROR) return -1;
     total_read += retstat;
