@@ -173,7 +173,20 @@ class TestNodes(unittest.TestCase):
     
         self.assertFalse(os.path.isdir(dir_path))
 
-    def test_create_and_remove_file_and_directory(self):
+    def test_create_multiple_directories(self):
+        # Create multiple directories
+        for i in range(5):
+            dir_path = os.path.join(MNT, f"test_directory_{i}")
+            os.makedirs(dir_path, exist_ok=True)
+            self.assertTrue(os.path.isdir(dir_path))
+
+        # Clean up the directories
+        for i in range(5):
+            dir_path = os.path.join(MNT, f"test_directory_{i}")
+            shutil.rmtree(dir_path)
+            self.assertFalse(os.path.isdir(dir_path))
+
+    def test_create_and_remove_directory_and_file(self):
         # Create file in the directory
         dir_path = os.path.join(MNT, "test_directory")
 
@@ -190,12 +203,48 @@ class TestNodes(unittest.TestCase):
 
         self.assertFalse(os.path.isdir(dir_path))
 
+    def test_create_multiple_files_in_directory(self):
+        # Create multiple files in a directory
+        dir_path = os.path.join(MNT, "test_directory")
+        os.makedirs(dir_path, exist_ok=True)
+
+        for i in range(5):
+            file_path = os.path.join(dir_path, f"test_file_{i}.txt")
+            with open(file_path, "w") as f:
+                f.write(f"This is test file {i}.")
+
+        # Verify files were created
+        for i in range(5):
+            self.assertTrue(os.path.isfile(os.path.join(dir_path, f"test_file_{i}.txt")))
+
+        # Clean up the directory
+        shutil.rmtree(dir_path)
+        self.assertFalse(os.path.isdir(dir_path))
+
+    def test_create_nested_directories_and_file(self):
+        # Create nested directories and a file
+        nested_dir_path = os.path.join(MNT, "parent_dir", "child_dir")
+        os.makedirs(nested_dir_path, exist_ok=True)
+
+        file_path = os.path.join(nested_dir_path, "test_file.txt")
+        with open(file_path, "w") as f:
+            f.write("This is a test file in a nested directory.")
+
+        self.assertTrue(os.path.isfile(file_path))
+
+        # Clean up the nested directories
+        shutil.rmtree(os.path.join(MNT, "parent_dir"))
+
+        self.assertFalse(os.path.isdir(nested_dir_path))
+
 
 if __name__ == "__main__":
     print("Starting filesystems tests\n")
     print(f"FS executable at: {BBFS_EXECUTABLE_PATH}")
     print(f"Mount directory at: {MNT}")
     print(f"Root directory at: {ROOT}")
+    print()
+    print("Log files will be generated in the directory:", CWD)
     print()
 
     unittest.main()
