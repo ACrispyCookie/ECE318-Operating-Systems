@@ -198,6 +198,11 @@ class TestNodes(unittest.TestCase):
 
         self.assertTrue(os.path.isfile(file_path))
 
+        # Verify the contents of the file
+        with open(file_path, "r") as f:
+            content = f.read()
+            self.assertEqual(content, "This is a test file.")
+
         # Clean up the directory
         shutil.rmtree(dir_path)
 
@@ -232,6 +237,11 @@ class TestNodes(unittest.TestCase):
 
         self.assertTrue(os.path.isfile(file_path))
 
+        # Verify the contents of the file
+        with open(file_path, "r") as f:
+            content = f.read()
+            self.assertEqual(content, "This is a test file in a nested directory.")
+
         # Clean up the nested directories
         shutil.rmtree(os.path.join(MNT, "parent_dir"))
 
@@ -252,6 +262,12 @@ class TestNodes(unittest.TestCase):
             self.assertTrue(os.path.isdir(dir_path))
             for j in range(2):
                 self.assertTrue(os.path.isfile(os.path.join(dir_path, f"test_file_{j}.txt")))
+
+            # Verify the contents of the files
+            for j in range(2):
+                with open(os.path.join(dir_path, f"test_file_{j}.txt"), "r") as f:
+                    content = f.read()
+                    self.assertEqual(content, f"This is test file {j} in directory {i}.")
 
             # Clean up the directories
             shutil.rmtree(dir_path)
