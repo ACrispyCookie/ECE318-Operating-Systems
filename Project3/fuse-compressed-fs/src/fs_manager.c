@@ -108,7 +108,6 @@ void safe_dirname(const char *path, char output[PATH_MAX]) {
     strncpy(copy, path, PATH_MAX - 1);
 
     char *res = dirname(copy);
-    log_msg("safe_dirname: path %s, res %s\n", path, res);
     strncpy(output, res, PATH_MAX - 1);
 }
 
@@ -146,8 +145,8 @@ static void load_node_hashmap(int fd, nodes_hash_element_t** node_hashmap) {
             return;
 
         // Find max last id
-        if (curr_node_id > get_last_id())
-            set_last_id(curr_node_id);
+        if (curr_node_id + 1 > get_last_id())
+            set_last_id(curr_node_id + 1);
 
         log_syscall("read", read(fd, &curr_name_size, sizeof(unsigned char)), 0);
         log_syscall("read", read(fd, &curr_filename, curr_name_size * sizeof(char)), 0);
@@ -164,7 +163,7 @@ static void load_node_hashmap(int fd, nodes_hash_element_t** node_hashmap) {
             char new_dir_path[PATH_MAX];
             int new_dir_fd;
 
-            snprintf(new_dir_path, PATH_MAX, "%s%lu", BB_DATA->rootdir, curr_node_id);
+            snprintf(new_dir_path, PATH_MAX, "%s/%s/%lu", BB_DATA->rootdir, DATA_PATH, element->id);
             new_dir_fd = open(new_dir_path, O_RDONLY);
 
             load_node_hashmap(new_dir_fd, &(element->hashmap));
@@ -205,8 +204,13 @@ void load_free_blocks() {
 }
 
 void save_node_metadata() {
+    log_syscall("ftruncate", ftruncate(root_node_metadata_fd, 0), 0);
+    lseek(root_node_metadata_fd, 0, SEEK_SET);
+
     nodes_table_clear_foreach(root_node_metadata->hashmap, save_node_metadata_element, root_node_metadata_fd);
     nodes_table_clear(root_node_metadata);
+
+    close(root_node_metadata_fd);
 }
 
 void save_blocks_metadata() {
@@ -228,10 +232,6 @@ static void save_node_metadata_element(nodes_hash_element_t *element, int fd) {
     unsigned char curr_name_size;
     int is_dir = element->is_dir;
 
-    // Delete previous file
-    log_syscall("ftruncate", ftruncate(fd, 0), 0);
-    lseek(fd, 0, SEEK_SET);
-
     // Write entry's data to file
     log_syscall("write", write(fd, &element->id, sizeof(unsigned long)), 0);
 
@@ -246,13 +246,15 @@ static void save_node_metadata_element(nodes_hash_element_t *element, int fd) {
         char new_dir_path[PATH_MAX];
         int new_dir_fd;
 
-        snprintf(new_dir_path, PATH_MAX, "%s%lu", BB_DATA->rootdir, element->id);
+        snprintf(new_dir_path, PATH_MAX, "%s/%s/%lu", BB_DATA->rootdir, DATA_PATH, element->id);
         new_dir_fd = open(new_dir_path, O_WRONLY);
+        log_syscall("ftruncate", ftruncate(new_dir_fd, 0), 0);
+        lseek(new_dir_fd, 0, SEEK_SET);
 
         nodes_table_clear_foreach(element->hashmap, save_node_metadata_element, new_dir_fd);
-    }
 
-    close(fd);
+        close(new_dir_fd);
+    }
 }
 
 static void save_blocks_metadata_element(blocks_hash_element_t *element) {
@@ -481,8 +483,10 @@ nodes_hash_element_t *get_dir_node_from_path(const char *path) {
     log_msg("token: %s\n", token);
 
     while (token != NULL) {
-        // nodes_table_print(curr_hashtable->hashmap);
+        log_msg("searching token inside the following...\n", token);
+        nodes_table_print(curr_hashtable->hashmap);
         curr_hashtable = nodes_table_find(curr_hashtable->hashmap, token);
+        log_msg("found %p\n", curr_hashtable);
 
         if (curr_hashtable == NULL) {
             log_msg("=====================================================\n");
@@ -499,7 +503,8 @@ nodes_hash_element_t *get_dir_node_from_path(const char *path) {
 
 ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block_offset_t block_offset, short byte_count) {
     int retstat;
-    if (byte_count <= 0)
+    int file_size = get_user_file_size(fd);
+    if (byte_count <= 0 || file_size == 0)
         return 0;
 
     unsigned char hash[HASH_SIZE];
