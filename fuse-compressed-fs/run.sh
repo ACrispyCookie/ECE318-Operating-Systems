@@ -5,12 +5,12 @@ set -e  # Exit on error
 case "$1" in
   mount)
     echo "Mounting the filesystem..."
-    (cd fs && ../src/bbfs ./rootdir ./mountdir)
+    (cd example && ../src/bbfs ./rootdir ./mountdir)
     ;;
 
   unmount)
     echo "Unmounting the filesystem..."
-    (cd fs && fusermount -u ./mountdir)
+    (cd example && fusermount -u ./mountdir)
     ;;
 
   test)
