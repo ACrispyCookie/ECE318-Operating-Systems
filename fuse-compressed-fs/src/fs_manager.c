@@ -471,32 +471,21 @@ int remove_file_node(const char *path) {
 }
 
 nodes_hash_element_t *get_dir_node_from_path(const char *path) {
-    log_msg("=====================================================\n");
-    log_msg("path_copy: %s\n", path);
     char directory_path[PATH_MAX]; 
     safe_dirname(path, directory_path);
-    log_msg("root_node %p\n", root_node_metadata);
     nodes_hash_element_t *curr_hashtable = root_node_metadata;
 
-    log_msg("path: %s directory_path: %s\n", path, directory_path);
     char *token = strtok(directory_path, "/"); // Skip leading '/'
-    log_msg("token: %s\n", token);
 
     while (token != NULL) {
-        log_msg("searching token inside the following...\n", token);
-        nodes_table_print(curr_hashtable->hashmap);
         curr_hashtable = nodes_table_find(curr_hashtable->hashmap, token);
-        log_msg("found %p\n", curr_hashtable);
 
         if (curr_hashtable == NULL) {
-            log_msg("=====================================================\n");
             return NULL;
         }
 
         token = strtok(NULL, "/");
-        log_msg("token: %s\n", token);
     }
-    log_msg("=====================================================\n");
 
     return curr_hashtable;
 }
@@ -509,6 +498,8 @@ ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block
 
     unsigned char hash[HASH_SIZE];
     retstat = read_hash_from_file(fd, hash, VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE, 1);
+    log_msg("read_block_from_file: fd %d size %ld off %ld\n", fd, byte_count, block_offset);
+    sha1_print(hash);
     if (retstat < 0) return ERROR;
 
     block_index_t index = blocks_table_find(blocks_metadata, hash)->block_index;

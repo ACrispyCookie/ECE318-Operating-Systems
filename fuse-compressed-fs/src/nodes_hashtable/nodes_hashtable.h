@@ -17,9 +17,13 @@ nodes_hash_element_t *nodes_table_add_new(nodes_hash_element_t **table, const ch
 
 nodes_hash_element_t *nodes_table_add(nodes_hash_element_t **table, const char name[NAME_MAX + 1], bool is_dir, unsigned long id);
 
+int nodes_table_add_element(nodes_hash_element_t **table, nodes_hash_element_t *element);
+
 nodes_hash_element_t *nodes_table_find(nodes_hash_element_t *table, const char name[NAME_MAX + 1]);
 
 int nodes_table_remove(nodes_hash_element_t **table, const char name[NAME_MAX + 1]);
+
+int nodes_table_remove_element(nodes_hash_element_t **table, nodes_hash_element_t *element);
 
 void nodes_table_print(nodes_hash_element_t *table);
 
