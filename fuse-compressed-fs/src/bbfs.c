@@ -116,7 +116,6 @@ int bb_getattr(const char *path, struct stat *statbuf)
 
     if (bb_fullpath(fpath, path, NULL, &element) < 0) {
         log_stat(statbuf);
-        log_msg("file not found\n");
         return -ENOENT;
     }
 
@@ -198,24 +197,16 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
 
     // Get the hashtable of the directory the new node is about to be created in
     dir_table = get_dir_node_from_path(path);
-    if (dir_table == NULL) {
-        log_msg("enoent\n");
+    if (dir_table == NULL)
         return -ENOENT;
-    }
 
     // Add the new node in the directory's hashtable
-    // nodes_table_print(root_node_metadata);
-    log_msg("root table %p dir table %p hashmap %p\n", root_node_metadata, dir_table, &(dir_table->hashmap));
     new_node = nodes_table_add_new(&(dir_table->hashmap), filename, false);
-    // nodes_table_print(root_node_metadata);
-    if (new_node == NULL) {
-        log_msg("eexist\n");
+    if (new_node == NULL)
         return -EEXIST;
-    }
 
     // Create the new file and write 0 as its last block size
     snprintf(new_file_path, PATH_MAX, "%s/%s/%lu", BB_DATA->rootdir, DATA_PATH, new_node->id);
-
     retstat = log_syscall("open", fd = open(new_file_path, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
     if (retstat < 0)
         return ERROR;
@@ -249,20 +240,13 @@ int bb_mkdir(const char *path, mode_t mode)
 
     // Get the hashtable of the directory the new node is about to be created in
     dir_table = get_dir_node_from_path(path);
-    if (dir_table == NULL) {
-        log_msg("enoent\n");
+    if (dir_table == NULL)
         return -ENOENT;
-    }
     
     // Add the new node in the directory's hashtable
-    // nodes_table_print(root_node_metadata);
-    log_msg("root table %p dir table %p hashmap %p\n", root_node_metadata, dir_table, &(dir_table->hashmap));
     new_node = nodes_table_add_new(&(dir_table->hashmap), filename, true);
-    // nodes_table_print(root_node_metadata);
-    if (new_node == NULL) {
-        log_msg("eexist\n");
+    if (new_node == NULL)
         return -EEXIST;
-    }
     
     // Create the new file and write 0 as its last block size
     snprintf(new_file_path, PATH_MAX, "%s/%s/%lu", BB_DATA->rootdir, DATA_PATH, new_node->id);
@@ -283,10 +267,14 @@ int bb_unlink(const char *path)
 {
     char fpath[PATH_MAX];
     int retstat, fd;
+    nodes_hash_element_t *file_table;
     
     log_msg("bb_unlink(path=\"%s\")\n",
 	    path);
-    bb_fullpath(fpath, path, NULL, NULL);
+    bb_fullpath(fpath, path, NULL, &file_table);
+    
+    if (file_table->is_dir)
+        return EISDIR;
 
     retstat = log_syscall("open", fd = open(fpath, O_RDWR), 0);
     if (retstat < 0) return -1;
@@ -297,28 +285,38 @@ int bb_unlink(const char *path)
     retstat = log_syscall("close", close(fd), 0);
     if (retstat < 0) return -1;
     
-    return remove_file_node(path);
+    retstat = remove_file_node(path);
+    if (retstat < 0) return -1;
+
+    retstat = log_syscall("unlink", unlink(fpath), 0);
+    if (retstat < 0) return -1;
+    
+    return SUCCESS;
 }
 
 /** Remove a directory */
 int bb_rmdir(const char *path)
 {
     char fpath[PATH_MAX];
+    int retstat;
     nodes_hash_element_t *file_table;
     
     log_msg("bb_rmdir(path=\"%s\")\n",
 	    path);
     bb_fullpath(fpath, path, NULL, &file_table);
 
-    if (!file_table->is_dir) {
-        errno = ENOTDIR;
-        return ERROR;
-    } else if (file_table->hashmap != NULL) {
-        errno = ENOTEMPTY;
-        return ERROR;
-    }
+    if (!file_table->is_dir)
+        return -ENOTDIR;
+    else if (file_table->hashmap != NULL)
+        return -ENOTEMPTY;
+    
+    retstat = remove_file_node(path);
+    if (retstat < 0) return -1;
 
-    return remove_file_node(path);
+    retstat = log_syscall("unlink", unlink(fpath), 0);
+    if (retstat < 0) return -1;
+    
+    return SUCCESS;
 }
 
 /** Create a symbolic link */
@@ -769,7 +767,7 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
 
     // since opendir returns a pointer, takes some custom handling of
     // return status.
-    fi->fh = (uint64_t) element;
+    fi->fh = (uint64_t) element->hashmap;
     
     log_fi(fi);
     
@@ -813,7 +811,6 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
     // when either the system readdir() returns NULL, or filler()
     // returns something non-zero.  The first case just means I've
     // read the whole directory; the second means the buffer is full.
-    filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
     for (nodes_hash_element_t *file = dp; file != NULL; file = file->hh.next) {
         log_msg("calling filler with name %s\n", file->name);
@@ -822,6 +819,7 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
             return -ENOMEM;
         }
     }
+    filler(buf, ".", NULL, 0);
     
     log_fi(fi);
     
@@ -921,8 +919,6 @@ void *bb_init(struct fuse_conn_info *conn)
     load_blocks_metadata();
     load_node_metadata();
     load_free_blocks();
-    nodes_table_print(root_node_metadata);
-    nodes_table_print(root_node_metadata->hashmap);
     
     return BB_DATA;
 }
@@ -937,12 +933,12 @@ void *bb_init(struct fuse_conn_info *conn)
 void bb_destroy(void *userdata)
 {
     // Save metadata and free blocks and close files
+    log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
+
     save_blocks_metadata();
     save_node_metadata();
     save_free_blocks();
     close(blocks_fd);
-
-    log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
 }
 
 /**
