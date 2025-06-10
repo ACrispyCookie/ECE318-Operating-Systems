@@ -1,3 +1,20 @@
+"""
+Test suite for the compressed bbfs filesystem.
+
+This script mounts the filesystem, runs a series of tests on file and directory operations,
+and then unmounts the filesystem. It repeats this process for each test class. This test
+suite uses the unittest framework. For more information on unittest, see:
+https://docs.python.org/3/library/unittest.html
+
+It is assumed that the bbfs executable is built and available at the specified path.
+
+To run the tests, type:
+    python3 [path/to/]test.py
+
+To run a specific test, cd into the directory the script is in and type:
+    python3 -m unittest test.TestBlocks.test_case_funciton_name
+"""
+
 import os
 import io
 import sys
@@ -18,6 +35,7 @@ BLOCKS_REPOSITORY_PATH = os.path.join(ROOT, "blocks")
 
 
 def mount_bbfs():
+    print("\nMounting bbfs filesystem\n")
     if not os.path.exists(MNT):
         os.makedirs(MNT)
     if not os.path.exists(ROOT):
@@ -29,6 +47,7 @@ def mount_bbfs():
 
 
 def unmount_bbfs():
+    print("\nUnmounting bbfs filesystem...\n")
     # Unmount the filesystem
     os.system(f"fusermount -u {MNT}")
     # Cleanup root contents
@@ -74,15 +93,15 @@ class TestBlocks(unittest.TestCase):
         with open(self.f_path, "rb") as f:
             return f.read()
 
-    #def test_write_one_block(self):
-    #    data = random_data(BLOCK_SIZE)
-    #    read_back = self.write_and_read(data)
-    #    self.assertEqual(read_back, data)
+    def test_write_one_block(self):
+       data = random_data(BLOCK_SIZE)
+       read_back = self.write_and_read(data)
+       self.assertEqual(read_back, data)
 
-    #def test_write_ten_blocks(self):
-    #    data = random_data(BLOCK_SIZE * 10)
-    #    read_back = self.write_and_read(data)
-    #    self.assertEqual(read_back, data)
+    def test_write_ten_blocks(self):
+       data = random_data(BLOCK_SIZE * 10)
+       read_back = self.write_and_read(data)
+       self.assertEqual(read_back, data)
 
     def test_write_ten_and_a_half_blocks(self):
         data = random_data(int(BLOCK_SIZE * 10.5))
@@ -121,17 +140,17 @@ class TestBlocks(unittest.TestCase):
         os.remove(file1_path)
         os.remove(file2_path)
 
-#    def test_ftruncate_files(self):
-#        data = random_data(int(BLOCK_SIZE * 5.5))
-#        truncated = self.write_and_read(data, truncate_to=BLOCK_SIZE * 2)
-#        self.assertEqual(truncated, data[:BLOCK_SIZE * 2])
+    def test_ftruncate_files(self):
+       data = random_data(int(BLOCK_SIZE * 5.5))
+       truncated = self.write_and_read(data, truncate_to=BLOCK_SIZE * 2)
+       self.assertEqual(truncated, data[:BLOCK_SIZE * 2])
 
-#    def test_add_zero_padding_to_files_with_ftruncate(self):
-#        data = random_data(int(BLOCK_SIZE * 5.5))
-#        padded = self.write_and_read(data, truncate_to=BLOCK_SIZE * 10)
-#
-#        expected = data + b'\x00' * (BLOCK_SIZE * 10 - len(data))
-#        self.assertEqual(padded, expected)
+    def test_add_zero_padding_to_files_with_ftruncate(self):
+       data = random_data(int(BLOCK_SIZE * 5.5))
+       padded = self.write_and_read(data, truncate_to=BLOCK_SIZE * 10)
+
+       expected = data + b'\x00' * (BLOCK_SIZE * 10 - len(data))
+       self.assertEqual(padded, expected)
 
     def test_defragmentation(self):
         file1_path = os.path.join(MNT, "file1")
