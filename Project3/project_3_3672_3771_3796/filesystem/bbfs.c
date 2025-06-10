@@ -411,7 +411,7 @@ int bb_rename(const char *path, const char *newpath)
     }
 
     // Change name 
-    char new_dir_name[NAME_MAX];
+    char new_dir_name[PATH_MAX];
     log_msg("a44 %s\n", newpath);
     safe_basename(newpath, new_dir_name);
     strcpy(file_entry->name, new_dir_name);
