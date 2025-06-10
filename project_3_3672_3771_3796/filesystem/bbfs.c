@@ -558,6 +558,10 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     // no need to get fpath on this one, since I work from fi->fh not the path
     log_fi(fi);
 
+    int file_size = get_user_file_size(fi->fh);
+    if (offset >= file_size)
+        return 0;
+
     first_offset = offset % BLOCK_SIZE;
     block_hash_position = offset / BLOCK_SIZE;
     block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;

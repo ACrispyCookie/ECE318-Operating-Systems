@@ -493,8 +493,7 @@ nodes_hash_element_t *get_dir_node_from_path(const char *path) {
 
 ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block_offset_t block_offset, short byte_count) {
     int retstat;
-    int file_size = get_user_file_size(fd);
-    if (byte_count <= 0 || file_size == 0)
+    if (byte_count <= 0)
         return 0;
 
     unsigned char hash[HASH_SIZE];
