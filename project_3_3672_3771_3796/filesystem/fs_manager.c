@@ -125,7 +125,8 @@ void safe_basename(const char *path, char output[PATH_MAX]) {
 
 void load_node_metadata() {
     // Load root folder hashmap
-    nodes_table_add(&root_node_metadata, "/", true, - 1);
+    char root_path[NAME_MAX + 1] = "/";
+    nodes_table_add(&root_node_metadata, root_path, true, - 1);
     load_node_hashmap(root_node_metadata_fd, &(root_node_metadata->hashmap));
 }
 
