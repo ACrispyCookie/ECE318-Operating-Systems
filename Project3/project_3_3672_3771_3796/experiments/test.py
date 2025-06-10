@@ -22,6 +22,7 @@ import string
 import random
 import unittest
 import shutil
+import time
 
 BLOCK_SIZE = 4096
 
@@ -43,11 +44,20 @@ def mount_bbfs():
 
     # Ensure the executable runs in the directory the tests are in to generate logs
     os.chdir(CWD)
+
+    # Check if the executable exists
+    if not os.path.exists(BBFS_EXECUTABLE_PATH):
+        raise FileNotFoundError(f"BBFS executable not found at {BBFS_EXECUTABLE_PATH}")
+
+    # Mount the filesystem
     os.system(f"{BBFS_EXECUTABLE_PATH} {ROOT} {MNT} 2> /dev/null")
 
 
 def unmount_bbfs():
     print("\nUnmounting bbfs filesystem\n")
+
+    time.sleep(1)  # Avoid any race conditions
+
     # Unmount the filesystem
     os.system(f"fusermount -u {MNT}")
     # Cleanup root contents
@@ -301,6 +311,10 @@ class TestNodes(unittest.TestCase):
             self.assertFalse(os.path.isdir(dir_path))
 
 if __name__ == "__main__":
+    if not os.path.exists(BBFS_EXECUTABLE_PATH):
+        print(f"BBFS executable not found at {BBFS_EXECUTABLE_PATH}. Please build the filesystem first.")
+        sys.exit(1)
+
     print("Starting filesystems tests\n")
     print(f"FS executable at: {BBFS_EXECUTABLE_PATH}")
     print(f"Mount directory at: {MNT}")
