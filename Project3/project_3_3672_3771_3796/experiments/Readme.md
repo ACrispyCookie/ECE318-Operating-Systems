@@ -30,3 +30,5 @@ python3 -m unittest test.TestClass.test_case_funciton_name
 # for example:
 python3 -m unittest test.TestBlocks.test_compression
 ```
+
+After the the tests are done, logs will be generated in the current folder.
