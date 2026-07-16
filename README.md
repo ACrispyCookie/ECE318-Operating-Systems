@@ -1,4 +1,4 @@
-# ECE318 Operating Systems
+# ECE318 — Operating Systems
 
 ![C](https://img.shields.io/badge/C-systems-blue)
 ![Linux Kernel](https://img.shields.io/badge/Linux-kernel-black)
@@ -31,9 +31,9 @@ Key pieces of the Project 3 implementation include:
 | `Project2/` | CPU scheduling simulator, workload configs, plotting scripts, and report. |
 | `Project2/Scheduler_VM/` | Scheduler VM implementation with SJF and modified goodness-based scheduling behavior. |
 | `Project3/` | FUSE filesystem project, development tree, final packaged source layout, experiments, and report. |
-| `Project3/project_3_3672_3771_3796/filesystem/` | Final Project 3 filesystem source and Makefile. |
-| `Project3/project_3_3672_3771_3796/experiments/` | Python unittest workflow for Project 3 filesystem behavior. |
-| `Project3/project_3_3672_3771_3796/report/` | Final Project 3 report. |
+| `Project3/final/filesystem/` | Final Project 3 filesystem source and Makefile. |
+| `Project3/final/experiments/` | Python unittest workflow for Project 3 filesystem behavior. |
+| `Project3/final/report/` | Final Project 3 report. |
 
 ### Project 1 — kernel interfaces
 
@@ -48,19 +48,19 @@ Project 2 implements and evaluates scheduling behavior in a simulator. The `Sche
 Project 3 is the largest implementation in the repository. The final source layout is under:
 
 ```text
-Project3/project_3_3672_3771_3796/
+Project3/final/
 ```
 
 The final filesystem source is in:
 
 ```text
-Project3/project_3_3672_3771_3796/filesystem/
+Project3/final/filesystem/
 ```
 
 The tests and experiment workflow are in:
 
 ```text
-Project3/project_3_3672_3771_3796/experiments/
+Project3/final/experiments/
 ```
 
 The older `fuse-compressed-fs/` and `fuse-tutorial-2018-02-04/` trees show the development path from the base FUSE tutorial code toward the final filesystem implementation.
@@ -83,31 +83,6 @@ sudo apt install pkg-config libssl-dev libfuse-dev
 
 Project 1 targets Linux kernel/module workflows, so it should be built in an environment with the appropriate kernel headers/source setup for the assignment.
 
-## Quick validation
-
-Build and run a small Project 2 scheduler example:
-
-```bash
-cd Project2/Scheduler_VM/src
-make
-./sjf_sched ../confs/simple.conf
-make clean
-```
-
-Build the final Project 3 filesystem:
-
-```bash
-cd Project3/project_3_3672_3771_3796/filesystem
-make
-```
-
-Run Project 3 tests after building `bbfs`:
-
-```bash
-cd ../experiments
-mkdir -p ./fs/mountdir ./fs/rootdir
-python3 -m unittest test
-```
 
 ## Full setup explanation
 
@@ -151,7 +126,7 @@ sudo apt install pkg-config libssl-dev libfuse-dev
 Build the filesystem:
 
 ```bash
-cd Project3/project_3_3672_3771_3796/filesystem
+cd Project3/final/filesystem
 make clean
 make
 ```

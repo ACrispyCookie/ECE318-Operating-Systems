@@ -1,1 +1,1 @@
-tar -cvf project_3_3672_3771_3796.tar project_3_3672_3771_3796
+tar -cvf final.tar final
