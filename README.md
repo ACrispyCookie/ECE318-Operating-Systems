@@ -20,8 +20,6 @@ Key pieces of the Project 3 implementation include:
 - **Full FUSE operation path:** file creation, deletion, reads, writes, truncation, directory operations, and rename behavior are handled in the filesystem layer.
 - **End-to-end stress testing:** the filesystem was pushed beyond small synthetic tests by running a Minecraft server on top of it, until multithreaded world generation became the limiting factor.
 
-That final test is the main story worth surfacing: this was not only a toy block-deduplication exercise, but a working filesystem that could support a real application workload far past the basic assignment examples.
-
 ## Course contents
 
 | Path | Description |
