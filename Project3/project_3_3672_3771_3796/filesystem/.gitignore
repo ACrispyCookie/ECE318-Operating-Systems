@@ -1,0 +1,5 @@
+bbfs
+bbfs.log
+*.o
+rootdir/
+mountdir/

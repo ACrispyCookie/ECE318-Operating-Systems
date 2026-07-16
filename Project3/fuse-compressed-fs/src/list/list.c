@@ -1,0 +1,163 @@
+#include "list.h"
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include "log.h"
+
+/*
+    Allocates memory for a new node
+    and stores the given data to the corresponding
+    field.
+*/
+static node_t *create_node(void *data);
+static node_t *list_find_larger(list_t *list, void *data);
+
+list_t *list_init(int (*comparator)(void *, void *)) {
+    list_t *new_list = (list_t *) malloc(sizeof(list_t));
+    if (new_list == NULL)
+        return NULL;
+    
+    node_t *node_to_add = create_node(NULL);
+    if (node_to_add == NULL) {
+        free(new_list);
+        return NULL;
+    }
+
+    new_list->comparator = comparator;
+    new_list->size = 0;
+    new_list->head = node_to_add;
+    node_to_add->next = node_to_add;
+    node_to_add->prev = node_to_add;
+    return new_list;
+}
+
+int list_add(list_t *list, void *data) {
+    if (list == NULL) 
+        return LIST_ERROR;
+
+    if (list_find(list, data, NULL) != NULL)
+        return LIST_ALREADY;
+    
+    node_t *node_to_add = create_node(data);
+    if (node_to_add == NULL)
+        return LIST_ERROR;
+
+    node_t *previous_node = list_find_larger(list, data);
+    node_to_add->next = previous_node->next;
+    node_to_add->prev = previous_node;
+    previous_node->next->prev = node_to_add;
+    previous_node->next = node_to_add;
+    list->size++;
+    
+    return LIST_SUCCESS;
+}
+
+int list_remove(list_t *list, void *data) {
+    if (list == NULL)
+        return LIST_ERROR;
+
+    node_t *previous_node;
+    node_t *found_node = list_find(list, data, &previous_node);
+    if (found_node == NULL)
+        return LIST_ALREADY;
+    
+    previous_node->next = found_node->next;
+    found_node->next->prev = previous_node;
+    free(found_node);
+    list->size--;
+    return LIST_SUCCESS;
+}
+
+int list_remove_element(list_t *list, node_t *element) {
+    if (list == NULL)
+        return LIST_ERROR;
+
+    node_t *previous_node = element->prev;
+    node_t *found_node = element;
+    if (found_node == NULL)
+        return LIST_ALREADY;
+    
+    previous_node->next = found_node->next; 
+    found_node->next->prev = previous_node;
+    free(found_node);
+    list->size--;
+    return LIST_SUCCESS;
+}
+
+void *list_remove_index(list_t *list, unsigned int index) {
+    if (list == NULL)
+        return NULL;
+    if (index >= list->size)
+        return NULL;
+
+    node_t *previous_node = list->head;
+    node_t *found_node = list->head->next;
+    for (int i = 0; i < index; i++) {
+        found_node = found_node->next;
+        previous_node = previous_node->next;
+    }
+    
+    previous_node->next = found_node->next;
+    found_node->next->prev = previous_node;
+    void *data = found_node->data;
+    free(found_node);
+    list->size--;
+    return data;
+}
+
+node_t *list_find(list_t *list, void *data, node_t **previous_return) {
+    if (list == NULL)
+        return NULL;
+    
+    node_t *current;
+    node_t *previous = list->head;
+    list->head->data = data;
+    for (current = list->head->next; list->comparator(current->data, data) != 0; current = current->next)
+        previous = current;
+    
+    if (previous_return != NULL)
+        *previous_return = previous;
+    return current == list->head ? NULL : current;
+}
+
+void list_destroy(list_t *list) {
+    list_destroy_foreach(list, NULL);
+}
+
+void list_destroy_foreach(list_t *list, void (*func)(node_t *)) {
+    if (list == NULL)
+        return;
+    node_t *curr_node, *next_node;
+
+    for (curr_node = list->head->next; curr_node != list->head; curr_node = next_node) {
+        next_node = curr_node->next;
+        if (func != NULL) func(curr_node);
+        free(curr_node);
+    }
+    free(list->head);
+    free(list);
+}
+
+static node_t *list_find_larger(list_t *list, void *data) {
+    if (list == NULL)
+        return NULL;
+    
+    node_t *current;
+    node_t *previous = list->head;
+    list->head->data = data;
+
+    
+    for (current = list->head->next; list->comparator(current->data, data) < 0; current = current->next)
+        previous = current;
+
+    return previous;
+}
+
+static node_t *create_node(void *data) {
+    node_t *new_node = (node_t *) malloc(sizeof(node_t));
+    if (new_node == NULL)
+        return NULL;
+    
+    new_node->data = data;
+    return new_node;
+}

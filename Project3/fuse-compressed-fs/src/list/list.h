@@ -1,0 +1,115 @@
+#ifndef LIST_H
+#define LIST_H
+
+#define LIST_SUCCESS 1
+#define LIST_ALREADY 0 
+#define LIST_ERROR -1
+
+/*
+    Struct describing a node
+    of a circular list 
+*/
+typedef struct node {
+    void *data;
+    struct node *prev; 
+    struct node *next; 
+} node_t;
+
+/*
+    Struct describing a circular list 
+*/
+typedef struct list {
+    int (*comparator)(void *, void *);
+    unsigned int size;
+    node_t *head; 
+} list_t;
+
+/*
+    Initializes a coroutine list and
+    returns a list_t describing the list.
+*/
+list_t *list_init(int (*comparator)(void *, void *));
+
+/*
+    Adds the given struct to the end of the list.
+
+    Parameters:
+    list_t *list - The list to add the new node.
+    void *data - The data of the new node.
+
+    Returns:
+    1 if the new node was added successfully.
+    0 if the new node already existed in the list.
+    -1 if an error occurred.
+*/
+int list_add(list_t *list, void *data);
+
+/*
+    Removes the given struct from the list.
+
+    Parameters:
+    list_t *list - The list to remove the node from.
+    void *data - The data of the node.
+
+    Returns:
+    1 if the node was removed successfully.
+    0 if the node didn't exist in the list.
+    -1 if an error occurred.
+*/
+int list_remove(list_t *list, void *data);
+
+/*
+    Removes the given node from the list.
+
+    Parameters:
+    list_t *list - The list to remove the node from.
+    node_t *data - The node of the list.
+
+    Returns:
+    0 if the node was removed successfully.
+    -1 if an error occurred.
+*/
+int list_remove_element(list_t *list, node_t *data);
+
+/*
+    Removes the node in the given index from the list.
+
+    Parameters:
+    list_t *list - The list to remove the node from.
+    unsigned int index - The index of the node to remove.
+
+    Returns:
+    a pointer to the node of the list found or
+    NULL if the node was not found or if an error occurred.
+*/
+void *list_remove_index(list_t *list, unsigned int index);
+
+/*
+    Find the given struct in the list.
+
+    Parameters:
+    list_t *list - The list to search in.
+    void *data - The data to find.
+    node_t **previous - Optional parameter to store the previous node of 
+                        the one we are looking for.
+    int (*comparator)(void *, void *) - Function pointer for comparing 2 data object.
+
+    Returns:
+    a pointer to the node of the list containing the given data or
+    NULL if the data was not found or if an error occurred.
+*/
+node_t *list_find(list_t *list, void *data, node_t **previous);
+
+/*
+    Destroys the given list freeing
+    any related memory.
+*/
+void list_destroy(list_t *list);
+
+/*
+    Destroys the given list freeing
+    any related memory running the given function for each node.
+*/
+void list_destroy_foreach(list_t *list, void (*func)(node_t *));
+
+#endif
