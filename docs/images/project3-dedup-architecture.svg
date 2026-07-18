@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1380" viewBox="0 0 1200 1380" role="img" aria-labelledby="title desc">
+  <title id="title">Project 3 deduplicating FUSE filesystem architecture</title>
+  <desc id="desc">Architecture for Project 3 FUSE filesystem: POSIX operations enter FUSE, custom nodes map file offsets to SHA-1 block references, and duplicate 4 KB blocks are stored once with reference counts.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#07111f"/><stop offset="1" stop-color="#1e1b4b"/></linearGradient>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".28"/></filter>
+    <style>
+      .title{font:800 44px Inter,Segoe UI,sans-serif;fill:#e0f2fe}.sub{font:500 23px Inter,Segoe UI,sans-serif;fill:#bfdbfe}.card{rx:26;fill:#0f172a;stroke:#334155;stroke-width:2.5;filter:url(#shadow)}.head{font:800 30px Inter,Segoe UI,sans-serif;fill:#f8fafc}.body{font:500 23px Inter,Segoe UI,sans-serif;fill:#cbd5e1}.small{font:500 19px Inter,Segoe UI,sans-serif;fill:#94a3b8}.chev{fill:#67e8f9}.module{rx:18;fill:#11283b;stroke:#38bdf8;stroke-width:2.6}.meta{rx:18;fill:#33260d;stroke:#fbbf24;stroke-width:2.6}.repo{rx:18;fill:#24183a;stroke:#c084fc;stroke-width:2.6}.block{rx:10;fill:#1d4ed8;stroke:#93c5fd;stroke-width:2.2}.dup{rx:10;fill:#14532d;stroke:#86efac;stroke-width:2.2}.free{rx:10;fill:#3b1d2a;stroke:#fb7185;stroke-width:2.2}.label{font:800 16px Inter,Segoe UI,sans-serif;fill:#f8fafc}.dark{font:800 15px Inter,Segoe UI,sans-serif;fill:#0f172a}.hash{font:800 18px ui-monospace,Consolas,monospace;fill:#fef3c7}.note{font:700 18px Inter,Segoe UI,sans-serif;fill:#93c5fd}
+    </style>
+  </defs>
+  <rect width="1200" height="1380" fill="url(#bg)"/>
+  <path d="M0 1235 C210 1175 365 1310 610 1240 C815 1190 990 1260 1200 1190 L1200 1380 L0 1380 Z" fill="#0f766e" opacity=".14"/>
+  <text x="60" y="74" class="title">Project 3 · deduplicating FUSE filesystem</text>
+  <text x="62" y="118" class="sub">Duplicate 4 KB file blocks are stored once and shared through metadata references.</text>
+
+  <g transform="translate(70,175)">
+    <rect width="1060" height="145" class="module"/>
+    <text x="38" y="55" class="head">POSIX file operations</text>
+    <text x="38" y="96" class="body">open, create, read, write, truncate, rename, unlink, readdir</text>
+    <text x="775" y="88" class="note">user programs</text>
+  </g>
+  <path d="M560 345 h80 l-40 54 z" class="chev"/>
+
+  <g transform="translate(70,425)">
+    <rect width="1060" height="155" class="module"/>
+    <text x="38" y="55" class="head">FUSE operation layer</text>
+    <text x="38" y="96" class="body">`bbfs.c` translates filesystem calls into custom node/block operations.</text>
+    <text x="38" y="128" class="small">The mount point behaves like a normal filesystem while the implementation runs in user space.</text>
+  </g>
+  <path d="M560 607 h80 l-40 54 z" class="chev"/>
+
+  <g transform="translate(70,690)">
+    <rect width="1060" height="205" class="meta"/>
+    <text x="38" y="55" class="head">Filesystem metadata</text>
+    <text x="38" y="96" class="body">Directory/file nodes keep names, sizes, parent links, and block-reference arrays.</text>
+    <text x="38" y="128" class="small">Metadata is rebuilt into an in-memory hierarchy at mount time and persisted on unmount.</text>
+    <rect x="95" y="152" width="132" height="34" class="block"/><text x="161" y="175" text-anchor="middle" class="label">file node</text>
+    <rect x="260" y="152" width="132" height="34" class="block"/><text x="326" y="175" text-anchor="middle" class="label">dir node</text>
+    <rect x="425" y="152" width="132" height="34" class="block"/><text x="491" y="175" text-anchor="middle" class="label">offset → hash</text>
+    <text x="695" y="175" class="hash">SHA1(block)</text>
+  </g>
+  <path d="M560 922 h80 l-40 54 z" class="chev"/>
+
+  <g transform="translate(70,1005)">
+    <rect width="1060" height="285" class="repo"/>
+    <text x="38" y="55" class="head">Shared block repository</text>
+    <text x="38" y="96" class="body">Each unique 4 KB block is stored once and referenced by every file that uses it.</text>
+    <text x="38" y="128" class="small">Reference counts and a circular free-block list handle deletion, truncation, and slot reuse.</text>
+
+    <rect x="95" y="168" width="126" height="54" class="block"/><text x="158" y="202" text-anchor="middle" class="label">A</text>
+    <rect x="245" y="168" width="126" height="54" class="dup"/><text x="308" y="202" text-anchor="middle" class="label">B shared</text>
+    <rect x="395" y="168" width="126" height="54" class="free"/><text x="458" y="202" text-anchor="middle" class="label">free</text>
+    <rect x="545" y="168" width="126" height="54" class="block"/><text x="608" y="202" text-anchor="middle" class="label">C</text>
+    <rect x="695" y="168" width="126" height="54" class="dup"/><text x="758" y="202" text-anchor="middle" class="label">B shared</text>
+
+    <text x="95" y="255" class="note">same contents → same SHA-1 → one physical block + higher refcount</text>
+  </g>
+</svg>

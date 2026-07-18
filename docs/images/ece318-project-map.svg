@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1280" viewBox="0 0 1200 1280" role="img" aria-labelledby="title desc">
+  <title id="title">ECE318 operating systems project map</title>
+  <desc id="desc">Overview of ECE318 projects: Linux kernel interfaces, scheduler simulation, and deduplicating FUSE filesystem.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#07111f"/><stop offset="1" stop-color="#1e293b"/></linearGradient>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".28"/></filter>
+    <style>
+      .title{font:800 46px Inter,Segoe UI,sans-serif;fill:#e0f2fe}.sub{font:500 24px Inter,Segoe UI,sans-serif;fill:#bfdbfe}.card{rx:28;fill:#0f172a;stroke:#334155;stroke-width:2.5;filter:url(#shadow)}.numBg{fill:#67e8f9}.num{font:800 22px Inter,Segoe UI,sans-serif;fill:#0f172a}.head{font:800 32px Inter,Segoe UI,sans-serif;fill:#f8fafc}.body{font:500 24px Inter,Segoe UI,sans-serif;fill:#cbd5e1}.small{font:500 20px Inter,Segoe UI,sans-serif;fill:#94a3b8}.pill{rx:13}.pillText{font:800 15px Inter,Segoe UI,sans-serif;fill:#0f172a}.kernel{fill:#93c5fd}.sched{fill:#fbbf24}.fuse{fill:#c084fc}.c{fill:#86efac}.chev{fill:#67e8f9}.icon{font:800 58px Inter,Segoe UI,sans-serif;fill:#fef3c7}.node{fill:#111827;stroke:#67e8f9;stroke-width:4}.disk{fill:#172554;stroke:#a78bfa;stroke-width:4}.line{stroke:#67e8f9;stroke-width:6;stroke-linecap:round}.dash{stroke:#fbbf24;stroke-width:5;stroke-linecap:round;stroke-dasharray:10 8}
+    </style>
+  </defs>
+  <rect width="1200" height="1280" fill="url(#bg)"/>
+  <path d="M0 1135 C210 1080 370 1205 610 1142 C815 1095 990 1165 1200 1105 L1200 1280 L0 1280 Z" fill="#0f766e" opacity=".14"/>
+  <text x="60" y="74" class="title">ECE318 Operating Systems</text>
+  <text x="62" y="118" class="sub">Kernel interfaces, scheduler policy, and a deduplicating FUSE filesystem</text>
+
+  <g transform="translate(60,180)">
+    <rect width="1080" height="240" class="card"/>
+    <circle cx="52" cy="55" r="28" class="numBg"/><text x="52" y="63" text-anchor="middle" class="num">1</text>
+    <text x="95" y="64" class="head">Project 1 · kernel interfaces</text>
+    <text x="95" y="112" class="body">Kernel module, system-call wrapper work,</text>
+    <text x="95" y="146" class="body">sysfs exposure, and assignment patch artifacts.</text>
+    <text x="95" y="190" class="small">Focus: crossing the user/kernel boundary safely.</text>
+    <text x="785" y="135" text-anchor="middle" class="icon">Linux</text>
+    <rect x="920" y="76" width="105" height="38" class="pill kernel"/><text x="972" y="102" text-anchor="middle" class="pillText">KERNEL</text>
+    <rect x="920" y="132" width="105" height="38" class="pill c"/><text x="972" y="158" text-anchor="middle" class="pillText">C</text>
+  </g>
+  <path d="M560 458 h80 l-40 54 z" class="chev"/>
+
+  <g transform="translate(60,545)">
+    <rect width="1080" height="240" class="card"/>
+    <circle cx="52" cy="55" r="28" class="numBg"/><text x="52" y="63" text-anchor="middle" class="num">2</text>
+    <text x="95" y="64" class="head">Project 2 · CPU scheduling simulator</text>
+    <text x="95" y="112" class="body">Shortest Job First compared against a</text>
+    <text x="95" y="146" class="body">wait-aware goodness scheduling rule.</text>
+    <text x="95" y="190" class="small">Focus: reducing starvation for long jobs.</text>
+    <circle cx="790" cy="120" r="38" class="node"/><text x="790" y="129" text-anchor="middle" class="body">CPU</text>
+    <path d="M690 120 H746" class="line"/><path d="M835 120 H910" class="dash"/>
+    <rect x="930" y="76" width="96" height="38" class="pill sched"/><text x="978" y="102" text-anchor="middle" class="pillText">SJF</text>
+    <rect x="930" y="132" width="96" height="38" class="pill kernel"/><text x="978" y="158" text-anchor="middle" class="pillText">PLOTS</text>
+  </g>
+  <path d="M560 823 h80 l-40 54 z" class="chev"/>
+
+  <g transform="translate(60,910)">
+    <rect width="1080" height="285" class="card"/>
+    <circle cx="52" cy="55" r="28" class="numBg"/><text x="52" y="63" text-anchor="middle" class="num">3</text>
+    <text x="95" y="64" class="head">Project 3 · deduplicating FUSE filesystem</text>
+    <text x="95" y="112" class="body">User-space filesystem with content-addressed</text>
+    <text x="95" y="146" class="body">4 KB block storage and persistent metadata.</text>
+    <text x="95" y="190" class="small">Focus: storing duplicate data once while preserving file semantics.</text>
+    <ellipse cx="790" cy="114" rx="105" ry="34" class="disk"/><path d="M685 114 V182 C685 205 895 205 895 182 V114" class="disk"/><ellipse cx="790" cy="182" rx="105" ry="34" class="disk"/>
+    <text x="790" y="153" text-anchor="middle" class="body">blocks</text>
+    <rect x="930" y="82" width="96" height="38" class="pill fuse"/><text x="978" y="108" text-anchor="middle" class="pillText">FUSE</text>
+    <rect x="930" y="138" width="96" height="38" class="pill c"/><text x="978" y="164" text-anchor="middle" class="pillText">SHA-1</text>
+  </g>
+</svg>

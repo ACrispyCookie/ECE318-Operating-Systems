@@ -8,12 +8,16 @@
 
 Operating systems coursework focused on Linux kernel interfaces, custom scheduling behavior, and a FUSE filesystem implementation. The projects move from kernel modules and system-call experiments to CPU scheduling simulation and finally to a user-space filesystem with persistent block storage.
 
+<p align="center">
+  <img src="docs/images/ece318-project-map.svg" alt="ECE318 project map covering kernel interfaces, CPU scheduling, and the deduplicating FUSE filesystem" width="100%">
+</p>
+
 ## Standout work
 
 The highlight of this repository is **Project 3**, a FUSE filesystem that stores duplicate 4 KB file blocks only once instead of writing repeated data multiple times. The implementation goes beyond the simplified version suggested by the handout: instead of relying on the easier shortcuts, it keeps full filesystem behavior working with custom metadata, block lookup, node tracking, persistence, and test coverage.
 
 <p align="center">
-  <img src="docs/images/project3-file-structure-memory.png" alt="In-memory directory and file metadata hierarchy used by the Project 3 FUSE filesystem" width="900">
+  <img src="docs/images/project3-file-structure-memory.png" alt="In-memory directory and file metadata hierarchy used by the Project 3 FUSE filesystem" width="100%">
 </p>
 
 Key pieces of the Project 3 implementation include:
@@ -26,7 +30,7 @@ Key pieces of the Project 3 implementation include:
 - **Automated and end-to-end testing:** Python `unittest` cases cover block reuse, compression behavior, truncation semantics, defragmentation, and nested file/directory hierarchies; the filesystem was also pushed beyond small synthetic tests by running a Minecraft server on top of it, until multithreaded world generation became the limiting factor.
 
 <p align="center">
-  <img src="docs/images/project3-free-blocks-list.png" alt="Circular free-block list used to reuse gaps in the Project 3 block repository" width="520">
+  <img src="docs/images/project3-free-blocks-list.png" alt="Circular free-block list used to reuse gaps in the Project 3 block repository" width="70%">
 </p>
 
 ## Course contents
@@ -58,7 +62,11 @@ Project 2 implements and evaluates scheduling behavior in a simulator. The `Sche
 The main comparison is between classic **Shortest Job First** and a modified SJF policy that combines expected CPU burst time with time spent waiting in the ready queue. Plain SJF can starve long/non-interactive jobs when many interactive jobs keep arriving; the modified goodness score trades some scheduler overhead for fairer CPU distribution.
 
 <p align="center">
-  <img src="docs/images/project2-sjf-goodness-priority.png" alt="Modified SJF priority rule combining low expected burst and high ready-queue wait time" width="650">
+  <img src="docs/images/project2-scheduler-comparison.svg" alt="Project 2 scheduler comparison between classic SJF and wait-aware goodness scheduling" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/images/project2-sjf-goodness-priority.png" alt="Modified SJF priority rule combining low expected burst and high ready-queue wait time" width="80%">
 </p>
 
 The included experiment configurations cover mixed and single-class workloads:
@@ -91,6 +99,10 @@ The tests and experiment workflow are in:
 ```text
 Project3/final/experiments/
 ```
+
+<p align="center">
+  <img src="docs/images/project3-dedup-architecture.svg" alt="Project 3 deduplicating FUSE filesystem architecture with FUSE operations, metadata, and shared block repository" width="100%">
+</p>
 
 The older `fuse-compressed-fs/` and `fuse-tutorial-2018-02-04/` trees show the development path from the base FUSE tutorial code toward the final filesystem implementation.
 
