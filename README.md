@@ -10,15 +10,24 @@ Operating systems coursework focused on Linux kernel interfaces, custom scheduli
 
 ## Standout work
 
-The highlight of this repository is **Project 3**, a FUSE filesystem that stores duplicate file blocks only once instead of writing repeated data multiple times. The implementation goes beyond the simplified version suggested by the handout: rather than relying on the easier shortcuts, it keeps the full filesystem behavior working with custom metadata, block lookup, node tracking, persistence, and test coverage.
+The highlight of this repository is **Project 3**, a FUSE filesystem that stores duplicate 4 KB file blocks only once instead of writing repeated data multiple times. The implementation goes beyond the simplified version suggested by the handout: instead of relying on the easier shortcuts, it keeps full filesystem behavior working with custom metadata, block lookup, node tracking, persistence, and test coverage.
+
+<p align="center">
+  <img src="docs/images/project3-file-structure-memory.png" alt="In-memory directory and file metadata hierarchy used by the Project 3 FUSE filesystem" width="900">
+</p>
 
 Key pieces of the Project 3 implementation include:
 
-- **Duplicate-block storage:** repeated file blocks are represented once in the backing store and referenced through filesystem metadata.
-- **Custom block and node metadata:** the filesystem tracks both stored blocks and filesystem nodes through dedicated hash-table structures.
-- **Persistent backing storage:** filesystem state survives unmounts through metadata and block repository files in the root directory.
+- **Content-addressed block storage:** file data is split into 4 KB blocks, hashed with SHA-1, and stored in a shared block repository so repeated blocks can be referenced instead of duplicated.
+- **Reference-counted block lifetime:** metadata tracks how many files refer to each stored block so deletion and truncation can reclaim data safely.
+- **Free-space management and partial defragmentation:** unused repository slots are tracked through a circular free-block list, with partial defragmentation used to reduce external fragmentation.
+- **Persistent node hierarchy:** directories and files are represented through custom node metadata that is rebuilt into an in-memory hierarchy at mount time and written back on unmount.
 - **Full FUSE operation path:** file creation, deletion, reads, writes, truncation, directory operations, and rename behavior are handled in the filesystem layer.
-- **End-to-end stress testing:** the filesystem was pushed beyond small synthetic tests by running a Minecraft server on top of it, until multithreaded world generation became the limiting factor.
+- **Automated and end-to-end testing:** Python `unittest` cases cover block reuse, compression behavior, truncation semantics, defragmentation, and nested file/directory hierarchies; the filesystem was also pushed beyond small synthetic tests by running a Minecraft server on top of it, until multithreaded world generation became the limiting factor.
+
+<p align="center">
+  <img src="docs/images/project3-free-blocks-list.png" alt="Circular free-block list used to reuse gaps in the Project 3 block repository" width="520">
+</p>
 
 ## Course contents
 
@@ -34,6 +43,9 @@ Key pieces of the Project 3 implementation include:
 | `Project3/final/filesystem/` | Final Project 3 filesystem source and Makefile. |
 | `Project3/final/experiments/` | Python unittest workflow for Project 3 filesystem behavior. |
 | `Project3/final/report/` | Final Project 3 report. |
+| `docs/images/` | Selected report graphics used by this README. |
+
+## Project summaries
 
 ### Project 1 — kernel interfaces
 
@@ -41,11 +53,28 @@ Project 1 contains Linux kernel-facing work: module builds, syscall-side experim
 
 ### Project 2 — CPU scheduling
 
-Project 2 implements and evaluates scheduling behavior in a simulator. The `Scheduler_VM` tree includes workload configuration files, scheduler source code, scripts for running experiments, and plotting support for comparing scheduling behavior across workloads.
+Project 2 implements and evaluates scheduling behavior in a simulator. The `Scheduler_VM` tree includes workload configuration files, scheduler source code, scripts for running experiments, plotting support, and the final report at [`Project2/Scheduler_VM/Report.pdf`](Project2/Scheduler_VM/Report.pdf).
+
+The main comparison is between classic **Shortest Job First** and a modified SJF policy that combines expected CPU burst time with time spent waiting in the ready queue. Plain SJF can starve long/non-interactive jobs when many interactive jobs keep arriving; the modified goodness score trades some scheduler overhead for fairer CPU distribution.
+
+<p align="center">
+  <img src="docs/images/project2-sjf-goodness-priority.png" alt="Modified SJF priority rule combining low expected burst and high ready-queue wait time" width="650">
+</p>
+
+The included experiment configurations cover mixed and single-class workloads:
+
+- 1 non-interactive + 25 interactive processes
+- 5 non-interactive + 5 interactive processes
+- 4 non-interactive processes
+- 4 interactive processes
+
+The plotting workflow generates Gantt charts, expected-burst traces, CPU-usage views, and goodness-score traces for comparing the two policies.
 
 ### Project 3 — FUSE filesystem
 
-Project 3 is the largest implementation in the repository. The final source layout is under:
+Project 3 is the largest implementation in the repository. The final report is available at [`Project3/final/report/report.pdf`](Project3/final/report/report.pdf).
+
+The final source layout is under:
 
 ```text
 Project3/final/
@@ -83,6 +112,29 @@ sudo apt install pkg-config libssl-dev libfuse-dev
 
 Project 1 targets Linux kernel/module workflows, so it should be built in an environment with the appropriate kernel headers/source setup for the assignment.
 
+## Quick validation
+
+Build the Project 2 scheduler simulator:
+
+```bash
+cd Project2/Scheduler_VM/src
+make
+```
+
+Build the Project 3 filesystem after installing the FUSE/OpenSSL development headers listed above:
+
+```bash
+cd Project3/final/filesystem
+make
+```
+
+Run the Project 3 functional tests after building `bbfs`:
+
+```bash
+cd Project3/final/experiments
+mkdir -p ./fs/mountdir ./fs/rootdir
+python3 -m unittest test
+```
 
 ## Full setup explanation
 
