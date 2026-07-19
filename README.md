@@ -4,15 +4,15 @@
 ![Linux Kernel](https://img.shields.io/badge/Linux-kernel-black)
 ![FUSE](https://img.shields.io/badge/FUSE-filesystem-purple)
 ![Scheduling](https://img.shields.io/badge/CPU-scheduling-orange)
-![Coursework](https://img.shields.io/badge/UTH-ECE318-green)
+![Coursework](https://img.shields.io/badge/UTH-ECE318-teal)
 
-Operating systems coursework focused on Linux kernel interfaces, custom scheduling behavior, and a FUSE filesystem implementation. The projects move from kernel modules and system-call experiments to CPU scheduling simulation and finally to a user-space filesystem with persistent block storage.
+Coursework repository for **ECE318 — Operating Systems** at the **University of Thessaly**. The projects move from Linux kernel interfaces and system-call experiments to CPU scheduling simulation and finally to a FUSE filesystem with persistent block storage.
 
 <p align="center">
   <img src="docs/images/ece318-project-map.svg" alt="ECE318 project map covering kernel interfaces, CPU scheduling, and the deduplicating FUSE filesystem" width="100%">
 </p>
 
-## Standout work
+## Standout work: deduplicating FUSE filesystem
 
 The highlight of this repository is **Project 3**, a FUSE filesystem that stores duplicate 4 KB file blocks only once instead of writing repeated data multiple times. The implementation goes beyond the simplified version suggested by the handout: instead of relying on the easier shortcuts, it keeps full filesystem behavior working with custom metadata, block lookup, node tracking, persistence, and test coverage.
 
@@ -37,19 +37,19 @@ Key pieces of the Project 3 implementation include:
 
 | Path | Description |
 | --- | --- |
-| `Project1/` | Linux kernel module and system-call work. |
-| `Project1/project1_find_roots/` | User-space wrapper and test files for the `find_roots` system-call work. |
-| `Project1/project1_module/` | Kyber/elevator kernel module changes and build files. |
-| `Project1/sysfs_module/` | sysfs kernel module implementation. |
-| `Project2/` | CPU scheduling simulator, workload configs, plotting scripts, and report. |
-| `Project2/Scheduler_VM/` | Scheduler VM implementation with SJF and modified goodness-based scheduling behavior. |
-| `Project3/` | FUSE filesystem project, development tree, final packaged source layout, experiments, and report. |
-| `Project3/final/filesystem/` | Final Project 3 filesystem source and Makefile. |
-| `Project3/final/experiments/` | Python unittest workflow for Project 3 filesystem behavior. |
-| `Project3/final/report/` | Final Project 3 report. |
-| `docs/images/` | Selected report graphics used by this README. |
+| [`Project1/`](Project1/) | Linux kernel module and system-call work. |
+| [`Project1/project1_find_roots/`](Project1/project1_find_roots/) | User-space wrapper and test files for the `find_roots` system-call work. |
+| [`Project1/project1_module/`](Project1/project1_module/) | Kyber/elevator kernel module changes and build files. |
+| [`Project1/sysfs_module/`](Project1/sysfs_module/) | sysfs kernel module implementation. |
+| [`Project2/`](Project2/) | CPU scheduling simulator, workload configs, plotting scripts, and report. |
+| [`Project2/Scheduler_VM/`](Project2/Scheduler_VM/) | Scheduler VM implementation with SJF and modified goodness-based scheduling behavior. |
+| [`Project3/`](Project3/) | FUSE filesystem project, development tree, final packaged source layout, experiments, and report. |
+| [`Project3/final/filesystem/`](Project3/final/filesystem/) | Final Project 3 filesystem source and Makefile. |
+| [`Project3/final/experiments/`](Project3/final/experiments/) | Python unittest workflow for Project 3 filesystem behavior. |
+| [`Project3/final/report/`](Project3/final/report/) | Final Project 3 report. |
+| [`docs/images/`](docs/images/) | Selected report graphics used by this README. |
 
-## Project summaries
+## Project details
 
 ### Project 1 — kernel interfaces
 
