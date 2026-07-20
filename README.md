@@ -46,7 +46,7 @@ Key pieces of the Project 3 implementation include:
 | [`Project3/`](Project3/) | FUSE filesystem project, development tree, final packaged source layout, experiments, and report. |
 | [`Project3/final/filesystem/`](Project3/final/filesystem/) | Final Project 3 filesystem source and Makefile. |
 | [`Project3/final/experiments/`](Project3/final/experiments/) | Python unittest workflow for Project 3 filesystem behavior. |
-| [`Project3/final/report/`](Project3/final/report/) | Final Project 3 report. |
+| [`Project3/final/report/`](Project3/final/report/) | Final Project 3 report; collected copy under [`docs/reports/`](docs/reports/). |
 | [`docs/images/`](docs/images/) | Selected report graphics used by this README. |
 
 ## Project details
@@ -57,7 +57,7 @@ Project 1 contains Linux kernel-facing work: module builds, syscall-side experim
 
 ### Project 2 — CPU scheduling
 
-Project 2 implements and evaluates scheduling behavior in a simulator. The `Scheduler_VM` tree includes workload configuration files, scheduler source code, scripts for running experiments, plotting support, and the final report at [`Project2/Scheduler_VM/Report.pdf`](Project2/Scheduler_VM/Report.pdf).
+Project 2 implements and evaluates scheduling behavior in a simulator. The `Scheduler_VM` tree includes workload configuration files, scheduler source code, scripts for running experiments, plotting support, and the final report at [`docs/reports/project-2-cpu-scheduling.pdf`](docs/reports/project-2-cpu-scheduling.pdf).
 
 The main comparison is between classic **Shortest Job First** and a modified SJF policy that combines expected CPU burst time with time spent waiting in the ready queue. Plain SJF can starve long/non-interactive jobs when many interactive jobs keep arriving; the modified goodness score trades some scheduler overhead for fairer CPU distribution.
 
@@ -80,7 +80,7 @@ The plotting workflow generates Gantt charts, expected-burst traces, CPU-usage v
 
 ### Project 3 — FUSE filesystem
 
-Project 3 is the largest implementation in the repository. The final report is available at [`Project3/final/report/report.pdf`](Project3/final/report/report.pdf).
+Project 3 is the largest implementation in the repository. The final report is available at [`docs/reports/project-3-deduplicating-fuse-filesystem.pdf`](docs/reports/project-3-deduplicating-fuse-filesystem.pdf).
 
 The final source layout is under:
 
