@@ -1,17 +1,25 @@
 #include "fs_manager.h"
 #include "log.h"
+#include "params.h"
+#include <libgen.h>
+#include <limits.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdbool.h>
+#include <limits.h>
 #include <sys/stat.h>
 
 /* File descriptor for the blocks repository */
-int blocks_fd, free_blocks_fd, metadata_fd;
+int blocks_fd, free_blocks_fd, blocks_metadata_fd, root_node_metadata_fd;
 
 /* List of free blocks */
 list_t *free_blocks;
 
 /* Metadata hash table */
-hash_element_t *metadata;
+blocks_hash_element_t *blocks_metadata = NULL;
+
+/* Hashmap with key the file ids and value a hashmap */
+nodes_hash_element_t *root_node_metadata = NULL;
 
 void sha1_print(unsigned char hash[HASH_SIZE]) {
     log_msg("SHA1 hash: ");
@@ -20,6 +28,11 @@ void sha1_print(unsigned char hash[HASH_SIZE]) {
     }
     log_msg("\n");
 }
+
+/*
+    Load the node structure from disk to memory based on the metadata files.
+*/
+static void load_node_hashmap(int fd, nodes_hash_element_t** node_hashmap);
 
 /*
     Comparator for free_blocks list
@@ -64,9 +77,14 @@ static ssize_t write_hash_to_file(int fd, unsigned char *hash, off_t block_offse
 static ssize_t read_block(unsigned char buf[BLOCK_SIZE], off_t block_offset, ssize_t byte_count);
 
 /*
+    Saves a node metadata entry in the appropriate file.
+*/
+static void save_node_metadata_element(nodes_hash_element_t *element, int fd);
+
+/*
     Saves a metadata entry in the metadata file.
 */
-static void save_metadata_element(hash_element_t *element);
+static void save_blocks_metadata_element(blocks_hash_element_t *element);
 
 /*
     Saves a free block in the free blocks file
@@ -85,35 +103,99 @@ static int index_comparator(void *num1, void *num2) {
     return (diff > 0) - (diff < 0);
 }
 
+void safe_dirname(const char *path, char output[PATH_MAX]) {
+    char copy[PATH_MAX];
+    strncpy(copy, path, PATH_MAX - 1);
+
+    char *res = dirname(copy);
+    strncpy(output, res, PATH_MAX - 1);
+}
+
+void safe_basename(const char *path, char output[PATH_MAX]) {
+    char copy[PATH_MAX];
+    strncpy(copy, path, PATH_MAX - 1);
+
+    char *res = basename(copy);
+    strncpy(output, res, PATH_MAX - 1);
+}
+
 /* ###################################################################################### */
 /* ################################# LOAD/SAVE FUNCTIONS ################################ */
 /* ###################################################################################### */
 
-void load_metadata() 
-{
+void load_node_metadata() {
+    // Load root folder hashmap
+    nodes_table_add(&root_node_metadata, "/", true, - 1);
+    load_node_hashmap(root_node_metadata_fd, &(root_node_metadata->hashmap));
+}
+
+static void load_node_hashmap(int fd, nodes_hash_element_t** node_hashmap) {
+    unsigned long curr_node_id;
+    unsigned char curr_name_size;
+    char curr_filename[NAME_MAX + 1];
+    int bytes_read;
+    bool is_dir;
+
+    nodes_hash_element_t* element;
+
+    while (1) {
+        // Read entry's data from file
+        bytes_read = log_syscall("read", read(fd, &curr_node_id, sizeof(unsigned long)), 0);
+        if (bytes_read == 0)
+            return;
+
+        // Find max last id
+        if (curr_node_id + 1 > get_last_id())
+            set_last_id(curr_node_id + 1);
+
+        log_syscall("read", read(fd, &curr_name_size, sizeof(unsigned char)), 0);
+        log_syscall("read", read(fd, &curr_filename, curr_name_size * sizeof(char)), 0);
+        is_dir = curr_filename[curr_name_size - 1] == '/';
+
+        // Replace slash with \0 if is dir or at the end of the name for a file
+        curr_filename[curr_name_size - ((is_dir) ? 1 : 0)] = '\0';
+
+        // Add entry to hashmap
+        element = nodes_table_add(node_hashmap, curr_filename, is_dir, curr_node_id);
+
+        // Check if entry is directory and call recursively
+        if (is_dir) {
+            char new_dir_path[PATH_MAX];
+            int new_dir_fd;
+
+            snprintf(new_dir_path, PATH_MAX, "%s/%s/%lu", BB_DATA->rootdir, DATA_PATH, element->id);
+            new_dir_fd = open(new_dir_path, O_RDONLY);
+
+            load_node_hashmap(new_dir_fd, &(element->hashmap));
+
+            close(new_dir_fd);
+        }
+    }
+}
+
+void load_blocks_metadata() {
     unsigned char hash[HASH_SIZE];
     ref_count_t ref_count;
     block_index_t block_index;
 
     while(1) {
-        int read_res = log_syscall("read", read(metadata_fd, hash, HASH_SIZE), 0);
+        int read_res = log_syscall("read", read(blocks_metadata_fd, hash, HASH_SIZE), 0);
         if (read_res <= 0) 
             return;
 
-        log_syscall("read", read(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE), 0);
-        log_syscall("read", read(metadata_fd, &block_index, METADATA_BLOCK_INDEX_SIZE), 0);
+        log_syscall("read", read(blocks_metadata_fd, &ref_count, BLOCKS_METADATA_REF_COUNT_SIZE), 0);
+        log_syscall("read", read(blocks_metadata_fd, &block_index, BLOCKS_METADATA_BLOCK_INDEX_SIZE), 0);
 
-        table_add(&metadata, hash, ref_count, block_index);
+        blocks_table_add(&blocks_metadata, hash, ref_count, block_index);
     }
 }
 
-void load_free_blocks() 
-{
+void load_free_blocks() {
     free_blocks = list_init(index_comparator);
 
     while(1) {
         block_index_t *block_index = malloc(sizeof(block_index_t));
-        int read_res = log_syscall("read", read(free_blocks_fd, block_index, METADATA_BLOCK_INDEX_SIZE), 0);
+        int read_res = log_syscall("read", read(free_blocks_fd, block_index, BLOCKS_METADATA_BLOCK_INDEX_SIZE), 0);
 
         if (read_res <= 0)
             return;
@@ -121,11 +203,21 @@ void load_free_blocks()
     }
 }
 
-void save_metadata() {
-    log_syscall("ftruncate", ftruncate(metadata_fd, 0), 0);
-    lseek(metadata_fd, 0, SEEK_SET);
-    table_clear_foreach(metadata, save_metadata_element);
-    close(metadata_fd);
+void save_node_metadata() {
+    log_syscall("ftruncate", ftruncate(root_node_metadata_fd, 0), 0);
+    lseek(root_node_metadata_fd, 0, SEEK_SET);
+
+    nodes_table_clear_foreach(root_node_metadata->hashmap, save_node_metadata_element, root_node_metadata_fd);
+    nodes_table_clear(root_node_metadata);
+
+    close(root_node_metadata_fd);
+}
+
+void save_blocks_metadata() {
+    log_syscall("ftruncate", ftruncate(blocks_metadata_fd, 0), 0);
+    lseek(blocks_metadata_fd, 0, SEEK_SET);
+    blocks_table_clear_foreach(blocks_metadata, save_blocks_metadata_element);
+    close(blocks_metadata_fd);
 }
 
 void save_free_blocks() {
@@ -135,20 +227,50 @@ void save_free_blocks() {
     close(free_blocks_fd);
 }
 
-static void save_metadata_element(hash_element_t *element) {
+static void save_node_metadata_element(nodes_hash_element_t *element, int fd) {
+    char curr_filename[NAME_MAX + 2];
+    unsigned char curr_name_size;
+    int is_dir = element->is_dir;
+
+    // Write entry's data to file
+    log_syscall("write", write(fd, &element->id, sizeof(unsigned long)), 0);
+
+    sprintf(curr_filename, (is_dir) ? "%s/" : "%s", element->name);
+    curr_name_size = strnlen(curr_filename, NAME_MAX);
+
+    log_syscall("write", write(fd, &curr_name_size, sizeof(unsigned char)), 0);
+    log_syscall("write", write(fd, &curr_filename, curr_name_size), 0);
+
+    // Check if entry is directory and call recursively
+    if (is_dir) {
+        char new_dir_path[PATH_MAX];
+        int new_dir_fd;
+
+        snprintf(new_dir_path, PATH_MAX, "%s/%s/%lu", BB_DATA->rootdir, DATA_PATH, element->id);
+        new_dir_fd = open(new_dir_path, O_WRONLY);
+        log_syscall("ftruncate", ftruncate(new_dir_fd, 0), 0);
+        lseek(new_dir_fd, 0, SEEK_SET);
+
+        nodes_table_clear_foreach(element->hashmap, save_node_metadata_element, new_dir_fd);
+
+        close(new_dir_fd);
+    }
+}
+
+static void save_blocks_metadata_element(blocks_hash_element_t *element) {
     unsigned char hash[HASH_SIZE];
     memcpy(hash, element->hash, HASH_SIZE);
     ref_count_t ref_count = element->ref_count;
     block_index_t block_index = element->block_index;
 
-    log_syscall("write", write(metadata_fd, hash, HASH_SIZE), 0);
-    log_syscall("write", write(metadata_fd, &ref_count, METADATA_REF_COUNT_SIZE), 0);
-    log_syscall("write", write(metadata_fd, &block_index, METADATA_BLOCK_INDEX_SIZE), 0);
+    log_syscall("write", write(blocks_metadata_fd, hash, HASH_SIZE), 0);
+    log_syscall("write", write(blocks_metadata_fd, &ref_count, BLOCKS_METADATA_REF_COUNT_SIZE), 0);
+    log_syscall("write", write(blocks_metadata_fd, &block_index, BLOCKS_METADATA_BLOCK_INDEX_SIZE), 0);
 }
 
 static void save_free_block(node_t *node) {
     block_index_t *block_index = (block_index_t *) node->data;
-    log_syscall("write", write(free_blocks_fd, block_index, METADATA_BLOCK_INDEX_SIZE), 0);
+    log_syscall("write", write(free_blocks_fd, block_index, BLOCKS_METADATA_BLOCK_INDEX_SIZE), 0);
     free(block_index);
 }
 
@@ -175,21 +297,21 @@ int create_block(const unsigned char *buf, unsigned char new_hash[HASH_SIZE])
     // Add the hash of the new block in the hashtable
     retstat = log_syscall("pwrite", pwrite(blocks_fd, buf, BLOCK_SIZE, new_block_offset), 0);
     if (retstat < 0) return ERROR;
-    table_add(&metadata, new_hash, 1, new_block_offset / BLOCK_SIZE);
+    blocks_table_add(&blocks_metadata, new_hash, 1, new_block_offset / BLOCK_SIZE);
 
     return SUCCESS;
 }
 
 int remove_block(const unsigned char hash[HASH_SIZE]) 
 {
-    hash_element_t *element = table_find(metadata, hash);
+    blocks_hash_element_t *element = blocks_table_find(blocks_metadata, hash);
     if (element == NULL)
         return BLOCK_NOT_FOUND;
     
     block_index_t *block_index = malloc(sizeof(block_index_t *));
     *block_index = element->block_index;
     
-    table_remove(&metadata, hash);
+    blocks_table_remove(&blocks_metadata, hash);
     list_add(free_blocks, block_index);
 
     if (check_and_defragment_blocks() < 0)
@@ -207,7 +329,7 @@ int add_reference_to_block(const unsigned char *buf, unsigned char hash[HASH_SIZ
 {
     SHA1(buf, BLOCK_SIZE, hash);
 
-    hash_element_t *element = table_find(metadata, hash);
+    blocks_hash_element_t *element = blocks_table_find(blocks_metadata, hash);
     if (element == NULL) {
         int retstat = create_block(buf, hash);
         return retstat < 0 ? ERROR : BLOCK_CREATED;
@@ -220,7 +342,7 @@ int add_reference_to_block(const unsigned char *buf, unsigned char hash[HASH_SIZ
 
 int remove_reference_from_block(const unsigned char hash[HASH_SIZE]) 
 {
-    hash_element_t *element = table_find(metadata, hash);
+    blocks_hash_element_t *element = blocks_table_find(blocks_metadata, hash);
     if (element == NULL)
         return BLOCK_NOT_FOUND;
     
@@ -248,7 +370,7 @@ int copy_block_to_first_free(block_index_t src_index) {
     retstat = create_block(src_block, src_hash);
     if (retstat < 0) return ERROR;
     
-    hash_element_t *src_element = table_find(metadata, src_hash);
+    blocks_hash_element_t *src_element = blocks_table_find(blocks_metadata, src_hash);
     src_element->block_index = index;
     
     return SUCCESS;
@@ -332,16 +454,55 @@ static ssize_t write_hash_to_file(int fd, unsigned char *hash, off_t block_offse
     return retstat < 0 ? ERROR : retstat;
 }
 
+nodes_hash_element_t *add_file_node(const char *path, bool is_dir) {
+    char file_name[PATH_MAX];
+    safe_basename(path, file_name);
+    nodes_hash_element_t *dir = get_dir_node_from_path(path);
+
+    return nodes_table_add_new(&(dir->hashmap), file_name, is_dir);
+}
+
+int remove_file_node(const char *path) {
+    char file_name[PATH_MAX];
+    safe_basename(path, file_name);
+    nodes_hash_element_t *dir = get_dir_node_from_path(path);
+
+    return nodes_table_remove(&(dir->hashmap), file_name);
+}
+
+nodes_hash_element_t *get_dir_node_from_path(const char *path) {
+    char directory_path[PATH_MAX]; 
+    safe_dirname(path, directory_path);
+    nodes_hash_element_t *curr_hashtable = root_node_metadata;
+
+    char *token = strtok(directory_path, "/"); // Skip leading '/'
+
+    while (token != NULL) {
+        curr_hashtable = nodes_table_find(curr_hashtable->hashmap, token);
+
+        if (curr_hashtable == NULL) {
+            return NULL;
+        }
+
+        token = strtok(NULL, "/");
+    }
+
+    return curr_hashtable;
+}
+
 ssize_t read_block_from_file(int fd, char *buf, block_index_t block_index, block_offset_t block_offset, short byte_count) {
     int retstat;
-    if (byte_count <= 0)
+    int file_size = get_user_file_size(fd);
+    if (byte_count <= 0 || file_size == 0)
         return 0;
 
     unsigned char hash[HASH_SIZE];
     retstat = read_hash_from_file(fd, hash, VIRTFILE_METADATA_SIZE + block_index * VIRTFILE_PTR_SIZE, 1);
+    log_msg("read_block_from_file: fd %d size %ld off %ld\n", fd, byte_count, block_offset);
+    sha1_print(hash);
     if (retstat < 0) return ERROR;
 
-    block_index_t index = table_find(metadata, hash)->block_index;
+    block_index_t index = blocks_table_find(blocks_metadata, hash)->block_index;
     retstat = read_block((unsigned char *) buf, index * BLOCK_SIZE + block_offset, MIN(byte_count, BLOCK_SIZE - block_offset));
     if (retstat < 0) return ERROR;
 
@@ -360,7 +521,7 @@ ssize_t read_blocks_from_file(int fd, char *buf, block_index_t start_index, bloc
         retstat = read_hash_from_file(fd, hash, virtual_file_offset, 1);
         if (retstat < 0) return ERROR;
 
-        block_index_t index = table_find(metadata, hash)->block_index;
+        block_index_t index = blocks_table_find(blocks_metadata, hash)->block_index;
         retstat = read_block((unsigned char *) buf + total_read, index * BLOCK_SIZE, BLOCK_SIZE);
         if (retstat < 0) return ERROR;
         else total_read += retstat;
@@ -387,7 +548,7 @@ ssize_t write_block_to_file(int fd, const char *buf, block_index_t block_index, 
     // Read previous block content or fill it with zeros
     old_block_exists = (retstat != 0);
     if (old_block_exists) {
-        block_index_t index = table_find(metadata, old_hash)->block_index;
+        block_index_t index = blocks_table_find(blocks_metadata, old_hash)->block_index;
         retstat = read_block(new_block, index * BLOCK_SIZE, BLOCK_SIZE);
         if (retstat < 0) return ERROR;
     } else {
@@ -487,7 +648,7 @@ int zeropad_file(int fd, ssize_t new_size) {
             break;
     }
 
-    hash_element_t *zero_block_hash = table_find(metadata, hash);
+    blocks_hash_element_t *zero_block_hash = blocks_table_find(blocks_metadata, hash);
     zero_block_hash->ref_count += zero_blocks - 1;
 
     return retstat < 0 ? ERROR : SUCCESS;

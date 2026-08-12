@@ -24,7 +24,7 @@
 #include "config.h"
 #include "params.h"
 #include "fs_manager.h"
-#include "hashtable/hashtable.h"
+#include "blocks_hashtable/blocks_hashtable.h"
 #include "list/list.h"
 
 #include <ctype.h>
@@ -47,23 +47,54 @@
 
 #include "log.h"
 
-//  All the paths I see are relative to the root of the mounted
-//  filesystem.  In order to get to the underlying filesystem, I need to
-//  have the mountpoint.  I'll save it away early on in main(), and then
-//  whenever I need a path for something I'll call this to construct
-//  it.
-static void bb_fullpath(char fpath[PATH_MAX], const char *path)
+/** Translate virtual node paths to real paths
+ *
+ * Get the path relative to the mount dir and return the real absolute path.
+ * The real_path will contain the translation from the virtual name to the real
+ * file in the rootdir that contains the related metadata.
+ *
+ * e.g.: Given the virtual path "/somedir/file.txt" the real path will be
+ *       "/absolute/path/to/mountdir/[node_id]" where [node_id] is the id
+ *       of the requested node. That file contains the metadata.
+ */
+static int bb_fullpath(char real_path[PATH_MAX], const char *virtual_path, nodes_hash_element_t **dir_hashtable, nodes_hash_element_t **file_hashtable)
 {
-    strcpy(fpath, BB_DATA->rootdir);
-    strcat(fpath, USER_PATH);
-    strncat(fpath, path, PATH_MAX - 1); // ridiculously long paths will
-				    // break here
+    char file_name[PATH_MAX];
+    safe_basename(virtual_path, file_name);
+    char node_id_str[NAME_MAX + 2];
+    nodes_hash_element_t *node_entry;
+    nodes_hash_element_t *dir_table = get_dir_node_from_path(virtual_path);
+
+    if (!strcmp("/", file_name)) {
+        if (dir_hashtable != NULL) *dir_hashtable = root_node_metadata;
+        if (file_hashtable != NULL) *file_hashtable = root_node_metadata;
+        strncpy(real_path, BB_DATA->rootdir, PATH_MAX - 1);
+        strncat(real_path, ROOT_PATH, PATH_MAX - 1);
+        return SUCCESS;
+    }
+
+    if (dir_table == NULL)
+        return ERROR;
+
+    if (dir_hashtable != NULL) *dir_hashtable = dir_table;
+    strncpy(real_path, BB_DATA->rootdir, PATH_MAX - 1);
+    strncat(real_path, DATA_PATH, PATH_MAX - 1);
+
+    node_entry = nodes_table_find(dir_table->hashmap, file_name);
+    log_msg("virt %s filename %s node_entry %p\n", virtual_path, file_name, node_entry);
+    if (node_entry == NULL)
+        return ERROR;
+
+    if (file_hashtable != NULL) *file_hashtable = node_entry;
+    snprintf(node_id_str, NAME_MAX + 1, "/%lu", node_entry->id);
+    strncat(real_path, node_id_str, PATH_MAX - 1); // ridiculously long paths will break here
 
     log_msg("    bb_fullpath:  rootdir = \"%s\", path = \"%s\", fpath = \"%s\"\n",
-	    BB_DATA->rootdir, path, fpath);
+        BB_DATA->rootdir, virtual_path, real_path);
+
+    return SUCCESS;
 }
 
-///////////////////////////////////////////////////////////
 //
 // Prototypes for all these functions, and the C-style comments,
 // come from /usr/include/fuse.h
@@ -79,28 +110,41 @@ int bb_getattr(const char *path, struct stat *statbuf)
     ssize_t retstat;
     int fd;
     char fpath[PATH_MAX];
+    nodes_hash_element_t *element;
     
-    log_msg("\nbb_getattr(path=\"%s\", statbuf=0x%08x)\n",
-	  path, statbuf);
-    bb_fullpath(fpath, path);
+    log_msg("\nbb_getattr(path=\"%s\", statbuf=0x%08x)\n", path, statbuf);
 
-    retstat = log_syscall("lstat", lstat(fpath, statbuf), 0);
-    log_stat(statbuf);
-
-    // If it is a regular file
-    if (S_ISREG(statbuf->st_mode)) {
-        retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);
-        if (retstat < 0) return -1;
-
-        retstat = get_user_file_size(fd);
-        if (retstat == ERROR) return -1;
-        statbuf->st_size = retstat;
-
-        retstat = log_syscall("close", close(fd), 0);
-        if (retstat < 0) return -1;
+    if (bb_fullpath(fpath, path, NULL, &element) < 0) {
+        log_stat(statbuf);
+        return -ENOENT;
     }
 
-    return retstat;
+    log_syscall("lstat", lstat(fpath, statbuf), 0);
+    log_stat(statbuf);
+
+    // nodes_table_print(root_node_metadata);
+
+    // If it is a directory
+    if (element->is_dir) {
+        statbuf->st_size = 4096;
+        statbuf->st_mode = S_IFDIR | 0775; // Random permissions to make it work
+        return SUCCESS;
+    }
+
+    retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);
+    if (retstat < 0) return ERROR;
+
+    retstat = get_user_file_size(fd);
+    if (retstat == ERROR)
+        return ERROR;
+
+    statbuf->st_size = retstat;
+
+    retstat = log_syscall("close", close(fd), 0);
+    if (retstat < 0)
+        return ERROR;
+
+    return SUCCESS;
 }
 
 /** Read the target of a symbolic link
@@ -122,7 +166,7 @@ int bb_readlink(const char *path, char *link, size_t size)
     
     log_msg("\nbb_readlink(path=\"%s\", link=\"%s\", size=%d)\n",
 	  path, link, size);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     retstat = log_syscall("readlink", readlink(fpath, link, size - 1), 0);
     if (retstat >= 0) {
@@ -142,43 +186,82 @@ int bb_readlink(const char *path, char *link, size_t size)
 // shouldn't that comment be "if" there is no.... ?
 int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
-    ssize_t retstat;
     int fd;
-    char fpath[PATH_MAX];
-    block_offset_t last_block_size = 0;
-    
-    log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n",
-	  path, mode, dev);
-    bb_fullpath(fpath, path);
-    
-    // On Linux this could just be 'mknod(path, mode, dev)' but this
-    // tries to be be more portable by honoring the quote in the Linux
-    // mknod man page stating the only portable use of mknod() is to
-    // make a fifo, but saying it should never actually be used for
-    // that.
-    if (S_ISFIFO(mode))
-	    retstat = log_syscall("mkfifo", mkfifo(fpath, mode), 0);
-	else if (!S_ISREG(mode))
-	    retstat = log_syscall("mknod", mknod(fpath, mode, dev), 0);
+    ssize_t retstat;
+    char new_file_path[PATH_MAX];
+    char filename[PATH_MAX];
+    safe_basename(path, filename);
 
-    // Write metadata
-    retstat = log_syscall("open", fd = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
+    nodes_hash_element_t* dir_table;
+    nodes_hash_element_t* new_node;
+
+    log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n", path, mode, dev);
+
+    // Get the hashtable of the directory the new node is about to be created in
+    dir_table = get_dir_node_from_path(path);
+    if (dir_table == NULL)
+        return -ENOENT;
+
+    // Add the new node in the directory's hashtable
+    new_node = nodes_table_add_new(&(dir_table->hashmap), filename, false);
+    if (new_node == NULL)
+        return -EEXIST;
+
+    // Create the new file and write 0 as its last block size
+    snprintf(new_file_path, PATH_MAX, "%s/%s/%lu", BB_DATA->rootdir, DATA_PATH, new_node->id);
+    retstat = log_syscall("open", fd = open(new_file_path, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
+    if (retstat < 0)
+        return ERROR;
+
+    block_offset_t last_block_size = 0;
     retstat = write_metadata_to_file(fd, (unsigned char *) &last_block_size);
+    if (retstat < 0)
+        return ERROR;
+
     retstat = log_syscall("close", close(fd), 0);
-    
-    return retstat;
+    if (retstat < 0)
+        return ERROR;
+
+    return SUCCESS;
 }
 
 /** Create a directory */
 int bb_mkdir(const char *path, mode_t mode)
 {
-    char fpath[PATH_MAX];
+    int fd;
+    ssize_t retstat;
+    char new_file_path[PATH_MAX];
+    char filename[PATH_MAX];
+    safe_basename(path, filename);
+
+    nodes_hash_element_t* dir_table;
+    nodes_hash_element_t* new_node;
     
     log_msg("\nbb_mkdir(path=\"%s\", mode=0%3o)\n",
 	    path, mode);
-    bb_fullpath(fpath, path);
 
-    return log_syscall("mkdir", mkdir(fpath, mode), 0);
+    // Get the hashtable of the directory the new node is about to be created in
+    dir_table = get_dir_node_from_path(path);
+    if (dir_table == NULL)
+        return -ENOENT;
+    
+    // Add the new node in the directory's hashtable
+    new_node = nodes_table_add_new(&(dir_table->hashmap), filename, true);
+    if (new_node == NULL)
+        return -EEXIST;
+    
+    // Create the new file and write 0 as its last block size
+    snprintf(new_file_path, PATH_MAX, "%s/%s/%lu", BB_DATA->rootdir, DATA_PATH, new_node->id);
+
+    retstat = log_syscall("open", fd = open(new_file_path, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
+    if (retstat < 0)
+        return ERROR;
+    
+    retstat = log_syscall("close", close(fd), 0);
+    if (retstat < 0)
+        return ERROR;
+
+    return SUCCESS;
 }
 
 /** Remove a file */
@@ -186,10 +269,16 @@ int bb_unlink(const char *path)
 {
     char fpath[PATH_MAX];
     int retstat, fd;
+    nodes_hash_element_t *file_table;
     
     log_msg("bb_unlink(path=\"%s\")\n",
 	    path);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, &file_table);
+    
+    if (file_table == NULL)
+        return -ENOENT;
+    if (file_table->is_dir)
+        return -EISDIR;
 
     retstat = log_syscall("open", fd = open(fpath, O_RDWR), 0);
     if (retstat < 0) return -1;
@@ -199,20 +288,41 @@ int bb_unlink(const char *path)
 
     retstat = log_syscall("close", close(fd), 0);
     if (retstat < 0) return -1;
+    
+    retstat = remove_file_node(path);
+    if (retstat < 0) return -1;
 
-    return log_syscall("unlink", unlink(fpath), 0);
+    retstat = log_syscall("unlink", unlink(fpath), 0);
+    if (retstat < 0) return -1;
+    
+    return SUCCESS;
 }
 
 /** Remove a directory */
 int bb_rmdir(const char *path)
 {
     char fpath[PATH_MAX];
+    int retstat;
+    nodes_hash_element_t *file_table;
     
     log_msg("bb_rmdir(path=\"%s\")\n",
 	    path);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, &file_table);
+    
+    if (file_table == NULL)
+        return -ENOENT;
+    if (!file_table->is_dir)
+        return -ENOTDIR;
+    if (file_table->hashmap != NULL)
+        return -ENOTEMPTY;
+    
+    retstat = remove_file_node(path);
+    if (retstat < 0) return -1;
 
-    return log_syscall("rmdir", rmdir(fpath), 0);
+    retstat = log_syscall("unlink", unlink(fpath), 0);
+    if (retstat < 0) return -1;
+    
+    return SUCCESS;
 }
 
 /** Create a symbolic link */
@@ -223,10 +333,14 @@ int bb_rmdir(const char *path)
 int bb_symlink(const char *path, const char *link)
 {
     char flink[PATH_MAX];
+    nodes_hash_element_t *file_table;
     
     log_msg("\nbb_symlink(path=\"%s\", link=\"%s\")\n",
 	    path, link);
-    bb_fullpath(flink, link);
+    bb_fullpath(flink, path, NULL, &file_table);
+    
+    if (file_table == NULL)
+        return -ENOENT;
 
     return log_syscall("symlink", symlink(path, flink), 0);
 }
@@ -237,13 +351,80 @@ int bb_rename(const char *path, const char *newpath)
 {
     char fpath[PATH_MAX];
     char fnewpath[PATH_MAX];
+    int retstat;
+    nodes_hash_element_t *dir_entry = NULL;
+    nodes_hash_element_t *file_entry = NULL;
+    nodes_hash_element_t *new_dir_entry = NULL;
+    nodes_hash_element_t *new_file_entry = NULL;
     
     log_msg("\nbb_rename(fpath=\"%s\", newpath=\"%s\")\n",
 	    path, newpath);
-    bb_fullpath(fpath, path);
-    bb_fullpath(fnewpath, newpath);
+    bb_fullpath(fpath, path, &dir_entry, &file_entry);
+    bb_fullpath(fnewpath, newpath, &new_dir_entry, &new_file_entry);
+    log_msg("   old path: %s new path: %s old_real_path: %s new_real_path: %s dir_entry: %p file_entry: %p new_dir_entry %p new_file_entry %p\n", path, newpath, fpath, fnewpath, 
+        dir_entry, file_entry, new_dir_entry, new_file_entry);
+    nodes_table_print(root_node_metadata->hashmap);
+    log_msg("a-2\n");
 
-    return log_syscall("rename", rename(fpath, fnewpath), 0);
+    if (file_entry == new_file_entry && dir_entry == new_dir_entry)
+        return SUCCESS;
+    log_msg("a-1\n");
+    
+    if (file_entry == NULL || new_dir_entry == NULL)
+        return -ENOENT;
+    log_msg("a0\n");
+
+    // File to be renamed is a dir and a regular file exists in the new path
+    if (file_entry->is_dir && new_file_entry != NULL && !new_file_entry->is_dir)
+        return -EEXIST;
+
+    // Remove file to be renamed from the old directory
+    log_msg("a1\n");
+    retstat = nodes_table_remove_element(&(dir_entry->hashmap), file_entry);
+    log_msg("a2 %d\n", retstat);
+    if (retstat < 0)
+        return ERROR;
+
+    // File exists in the new path and is of the same type
+    if (new_file_entry != NULL && new_file_entry->is_dir == file_entry->is_dir) {
+        log_msg("a3\n");
+        // Remove old file
+        int fd;
+        retstat = log_syscall("open", fd = open(fnewpath, O_RDWR), 0);
+        if (retstat < 0) return -1;
+
+        retstat = truncate_file(fd, 0);
+        if (retstat == ERROR) return -1;
+
+        retstat = log_syscall("close", close(fd), 0);
+        if (retstat < 0) return -1;
+
+        retstat = log_syscall("unlink", unlink(fnewpath), 0);
+        if (retstat < 0) return -1;
+
+        // Replace old file entry
+        new_file_entry->id = file_entry->id;
+        new_file_entry->hashmap = file_entry->hashmap;
+        free(file_entry);
+
+        return SUCCESS;
+    }
+
+    // Change name 
+    char new_dir_name[NAME_MAX];
+    log_msg("a44 %s\n", newpath);
+    safe_basename(newpath, new_dir_name);
+    strcpy(file_entry->name, new_dir_name);
+    log_msg("a4 %s\n", new_dir_name);
+
+    log_msg("a5\n");
+    retstat = nodes_table_add_element(&(new_dir_entry->hashmap), file_entry);
+    log_msg("a6 %d\n", retstat);
+    if (retstat < 0)
+        return ERROR;
+
+    log_msg("a7\n");
+    return SUCCESS;
 }
 
 /** Create a hard link to a file */
@@ -253,8 +434,8 @@ int bb_link(const char *path, const char *newpath)
     
     log_msg("\nbb_link(path=\"%s\", newpath=\"%s\")\n",
 	    path, newpath);
-    bb_fullpath(fpath, path);
-    bb_fullpath(fnewpath, newpath);
+    bb_fullpath(fpath, path, NULL, NULL);
+    bb_fullpath(fnewpath, newpath, NULL, NULL);
 
     return log_syscall("link", link(fpath, fnewpath), 0);
 }
@@ -266,7 +447,7 @@ int bb_chmod(const char *path, mode_t mode)
     
     log_msg("\nbb_chmod(fpath=\"%s\", mode=0%03o)\n",
 	    path, mode);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     return log_syscall("chmod", chmod(fpath, mode), 0);
 }
@@ -279,7 +460,7 @@ int bb_chown(const char *path, uid_t uid, gid_t gid)
     
     log_msg("\nbb_chown(path=\"%s\", uid=%d, gid=%d)\n",
 	    path, uid, gid);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     return log_syscall("chown", chown(fpath, uid, gid), 0);
 }
@@ -292,7 +473,7 @@ int bb_truncate(const char *path, off_t newsize)
     
     log_msg("\nbb_truncate(path=\"%s\", newsize=%lld)\n",
 	    path, newsize);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     int new_fd = log_syscall("open", open(fpath, O_RDWR), 0);
     if (new_fd < 0) return -1;
@@ -314,7 +495,7 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
     
     log_msg("\nbb_utime(path=\"%s\", ubuf=0x%08x)\n",
 	    path, ubuf);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     return log_syscall("utime", utime(fpath, ubuf), 0);
 }
@@ -337,7 +518,7 @@ int bb_open(const char *path, struct fuse_file_info *fi)
     
     log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
     
     // if the open call succeeds, my retstat is the file descriptor,
     // else it's -errno.  I'm making sure that in that case the saved
@@ -382,6 +563,7 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
     block_count = CEIL_TO_MULT(first_offset + size, BLOCK_SIZE) / BLOCK_SIZE;
 
     // Read first block
+    log_msg("read_path %s fd %d size %ld off %ld\n", path, fi->fh, size, offset);
     retstat = read_block_from_file(fi->fh, buf, block_hash_position, first_offset, MIN(BLOCK_SIZE - first_offset, size));
     if (retstat == ERROR) return -1;
     total_read += retstat;
@@ -420,7 +602,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset, struc
 
     log_msg("\nbb_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n", path, buf, size, offset, fi);
     log_fi(fi);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     int new_fd = log_syscall("open", open(fpath, O_RDWR), 0);
     if (new_fd < 0) return -1;
@@ -479,7 +661,7 @@ int bb_statfs(const char *path, struct statvfs *statv)
     
     log_msg("\nbb_statfs(path=\"%s\", statv=0x%08x)\n",
 	    path, statv);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
     
     // get stats for underlying filesystem
     retstat = log_syscall("statvfs", statvfs(fpath, statv), 0);
@@ -584,7 +766,7 @@ int bb_setxattr(const char *path, const char *name, const char *value, size_t si
     
     log_msg("\nbb_setxattr(path=\"%s\", name=\"%s\", value=\"%s\", size=%d, flags=0x%08x)\n",
 	    path, name, value, size, flags);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     return log_syscall("lsetxattr", lsetxattr(fpath, name, value, size, flags), 0);
 }
@@ -597,7 +779,7 @@ int bb_getxattr(const char *path, const char *name, char *value, size_t size)
     
     log_msg("\nbb_getxattr(path = \"%s\", name = \"%s\", value = 0x%08x, size = %d)\n",
 	    path, name, value, size);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     retstat = log_syscall("lgetxattr", lgetxattr(fpath, name, value, size), 0);
     if (retstat >= 0)
@@ -616,7 +798,7 @@ int bb_listxattr(const char *path, char *list, size_t size)
     log_msg("\nbb_listxattr(path=\"%s\", list=0x%08x, size=%d)\n",
 	    path, list, size
 	    );
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     retstat = log_syscall("llistxattr", llistxattr(fpath, list, size), 0);
     if (retstat >= 0) {
@@ -638,7 +820,7 @@ int bb_removexattr(const char *path, const char *name)
     
     log_msg("\nbb_removexattr(path=\"%s\", name=\"%s\")\n",
 	    path, name);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     return log_syscall("lremovexattr", lremovexattr(fpath, name), 0);
 }
@@ -653,22 +835,17 @@ int bb_removexattr(const char *path, const char *name)
  */
 int bb_opendir(const char *path, struct fuse_file_info *fi)
 {
-    DIR *dp;
     int retstat = 0;
     char fpath[PATH_MAX];
+    nodes_hash_element_t *element;
     
-    log_msg("\nbb_opendir(path=\"%s\", fi=0x%08x)\n",
-	  path, fi);
-    bb_fullpath(fpath, path);
+    log_msg("\nbb_opendir(path=\"%s\", fi=0x%08x)\n", path, fi);
+    if (bb_fullpath(fpath, path, NULL, &element) < 0)
+        return ERROR;
 
     // since opendir returns a pointer, takes some custom handling of
     // return status.
-    dp = opendir(fpath);
-    log_msg("    opendir returned 0x%p\n", dp);
-    if (dp == NULL)
-	retstat = log_error("bb_opendir opendir");
-    
-    fi->fh = (intptr_t) dp;
+    fi->fh = (uint64_t) element->hashmap;
     
     log_fi(fi);
     
@@ -701,36 +878,26 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 	       struct fuse_file_info *fi)
 {
     int retstat = 0;
-    DIR *dp;
-    struct dirent *de;
+    nodes_hash_element_t *dp;
     
     log_msg("\nbb_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",
 	    path, buf, filler, offset, fi);
     // once again, no need for fullpath -- but note that I need to cast fi->fh
-    dp = (DIR *) (uintptr_t) fi->fh;
-
-    // Every directory contains at least two entries: . and ..  If my
-    // first call to the system readdir() returns NULL I've got an
-    // error; near as I can tell, that's the only condition under
-    // which I can get an error from readdir()
-    de = readdir(dp);
-    log_msg("    readdir returned 0x%p\n", de);
-    if (de == 0) {
-        retstat = log_error("bb_readdir readdir");
-        return retstat;
-    }
+    dp = (nodes_hash_element_t *) fi->fh;
 
     // This will copy the entire directory into the buffer.  The loop exits
     // when either the system readdir() returns NULL, or filler()
     // returns something non-zero.  The first case just means I've
     // read the whole directory; the second means the buffer is full.
-    do {
-        log_msg("calling filler with name %s\n", de->d_name);
-        if (filler(buf, de->d_name, NULL, 0) != 0) {
+    filler(buf, "..", NULL, 0);
+    for (nodes_hash_element_t *file = dp; file != NULL; file = file->hh.next) {
+        log_msg("calling filler with name %s\n", file->name);
+        if (filler(buf, file->name, NULL, 0) != 0) {
             log_msg("    ERROR bb_readdir filler:  buffer full");
             return -ENOMEM;
         }
-    } while ((de = readdir(dp)) != NULL);
+    }
+    filler(buf, ".", NULL, 0);
     
     log_fi(fi);
     
@@ -748,8 +915,7 @@ int bb_releasedir(const char *path, struct fuse_file_info *fi)
     log_msg("\nbb_releasedir(path=\"%s\", fi=0x%08x)\n",
 	    path, fi);
     log_fi(fi);
-    
-    closedir((DIR *) (uintptr_t) fi->fh);
+    fi->fh = 0;
     
     return retstat;
 }
@@ -802,7 +968,8 @@ void *bb_init(struct fuse_conn_info *conn)
     // Open blocks and metadata
     char blocks_path[PATH_MAX];
     char free_blocks_path[PATH_MAX];
-    char metadata_path[PATH_MAX];
+    char blocks_metadata_path[PATH_MAX];
+    char root_node_metadata_path[PATH_MAX];
     char user_folder_path[PATH_MAX];
 
     strcpy(blocks_path, BB_DATA->rootdir);
@@ -813,17 +980,22 @@ void *bb_init(struct fuse_conn_info *conn)
     strcat(free_blocks_path, FREE_BLOCKS_PATH);
     log_syscall("open", free_blocks_fd = open(free_blocks_path, O_CREAT | O_RDWR, STORAGE_FILES_PERMISSIONS), 0);
 
-    strcpy(metadata_path, BB_DATA->rootdir);
-    strcat(metadata_path, METADATA_PATH);
-    log_syscall("open", metadata_fd = open(metadata_path, O_CREAT | O_RDWR, STORAGE_FILES_PERMISSIONS), 0);
+    strcpy(blocks_metadata_path, BB_DATA->rootdir);
+    strcat(blocks_metadata_path, BLOCKS_METADATA_PATH);
+    log_syscall("open", blocks_metadata_fd = open(blocks_metadata_path, O_CREAT | O_RDWR, STORAGE_FILES_PERMISSIONS), 0);
 
     strcpy(user_folder_path, BB_DATA->rootdir);
-    strcat(user_folder_path, USER_PATH);
+    strcat(user_folder_path, DATA_PATH);
     log_syscall("mkdir", retstat = mkdir(user_folder_path, USER_FOLDER_PERMISSIONS), 0);
     if (retstat == -1 && errno != EEXIST) return NULL;
 
+    strcpy(root_node_metadata_path, BB_DATA->rootdir);
+    strcat(root_node_metadata_path, ROOT_PATH);
+    log_syscall("open", root_node_metadata_fd = open(root_node_metadata_path, O_CREAT | O_RDWR, ROOT_FOLDER_PERMISSIONS), 0);
+
     // Load metadata and free blocks to memory
-    load_metadata();
+    load_blocks_metadata();
+    load_node_metadata();
     load_free_blocks();
     
     return BB_DATA;
@@ -839,13 +1011,12 @@ void *bb_init(struct fuse_conn_info *conn)
 void bb_destroy(void *userdata)
 {
     // Save metadata and free blocks and close files
-    save_metadata();
+    log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
+
+    save_blocks_metadata();
+    save_node_metadata();
     save_free_blocks();
     close(blocks_fd);
-    close(metadata_fd);
-    close(free_blocks_fd);
-
-    log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
 }
 
 /**
@@ -866,7 +1037,7 @@ int bb_access(const char *path, int mask)
    
     log_msg("\nbb_access(path=\"%s\", mask=0%o)\n",
 	    path, mask);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
     
     retstat = access(fpath, mask);
     
@@ -895,7 +1066,7 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
     log_msg("\nbb_ftruncate(path=\"%s\", offset=%lld, fi=0x%08x)\n",
 	    path, offset, fi);
     log_fi(fi);
-    bb_fullpath(fpath, path);
+    bb_fullpath(fpath, path, NULL, NULL);
 
     int new_fd = log_syscall("open", open(fpath, O_RDWR), 0);
     if (new_fd < 0) return -1;
@@ -928,7 +1099,9 @@ int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *f
     log_msg("\nbb_fgetattr(path=\"%s\", statbuf=0x%08x, fi=0x%08x)\n",
 	    path, statbuf, fi);
     log_fi(fi);
-    bb_fullpath(fpath, path);
+    nodes_hash_element_t *element;
+    if (bb_fullpath(fpath, path, NULL, &element) < 0)
+        return ERROR;
 
     // On FreeBSD, trying to do anything with the mountpoint ends up
     // opening it, and then using the FD for an fgetattr.  So in the
@@ -941,17 +1114,23 @@ int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *f
     if (retstat < 0)
 	retstat = log_error("bb_fgetattr fstat");
 
-    if (S_ISREG(statbuf->st_mode)) {
-        retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);
-        if (retstat < 0) return -1;
-
-        retstat = get_user_file_size(fd);
-        if (retstat == ERROR) return -1;
-        statbuf->st_size = retstat;
-
-        retstat = log_syscall("close", close(fd), 0);
-        if (retstat < 0) return -1;
+    if (element->is_dir) {
+        statbuf->st_size = 4096;
+        return SUCCESS;
     }
+
+    retstat = log_syscall("open", fd = open(fpath, O_RDONLY), 0);
+    if (retstat < 0) return ERROR;
+
+    retstat = get_user_file_size(fd);
+    if (retstat == ERROR)
+        return ERROR;
+
+    statbuf->st_size = retstat;
+
+    retstat = log_syscall("close", close(fd), 0);
+    if (retstat < 0)
+        return ERROR;
     
     log_stat(statbuf);
     
