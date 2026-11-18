@@ -1,10 +1,8 @@
 # ECE318 — Operating Systems
 
-![C](https://img.shields.io/badge/C-systems-blue)
-![Linux Kernel](https://img.shields.io/badge/Linux-kernel-black)
-![FUSE](https://img.shields.io/badge/FUSE-filesystem-purple)
-![Scheduling](https://img.shields.io/badge/CPU-scheduling-orange)
-![Coursework](https://img.shields.io/badge/UTH-ECE318-teal)
+![C](https://img.shields.io/badge/C-0E7C86?style=flat&logo=c&logoColor=white)
+![Linux kernel](https://img.shields.io/badge/Linux%20kernel-8A6D2B?style=flat&logo=linux&logoColor=white)
+![FUSE](https://img.shields.io/badge/FUSE-8A6D2B?style=flat&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0zIDYuNUExLjUgMS41IDAgMCAxIDQuNSA1SDlsMiAyLjVoOC41QTEuNSAxLjUgMCAwIDEgMjEgOXY5LjVhMS41IDEuNSAwIDAgMS0xLjUgMS41aC0xNUExLjUgMS41IDAgMCAxIDMgMTguNXoiLz48L3N2Zz4=)
 
 Coursework repository for **ECE318 — Operating Systems** at the **University of Thessaly**. The projects move from Linux kernel interfaces and system-call experiments to CPU scheduling simulation and finally to a FUSE filesystem with persistent block storage.
 
