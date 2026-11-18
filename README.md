@@ -12,22 +12,22 @@ Coursework repository for **ECE318 — Operating Systems** at the **University o
   <img src="docs/images/ece318-project-map.svg" alt="ECE318 project map covering kernel interfaces, CPU scheduling, and the deduplicating FUSE filesystem" width="100%">
 </p>
 
-## Standout work: deduplicating FUSE filesystem
+## Highlight: deduplicating FUSE filesystem
 
-The highlight of this repository is **Project 3**, a FUSE filesystem that stores duplicate 4 KB file blocks only once instead of writing repeated data multiple times. The implementation goes beyond the simplified version suggested by the handout: instead of relying on the easier shortcuts, it keeps full filesystem behavior working with custom metadata, block lookup, node tracking, persistence, and test coverage.
+**Project 3** is a FUSE filesystem that stores each distinct 4 KB block once, however many files contain it. The handout allowed a simplified design; this one keeps full filesystem semantics, with custom metadata, block lookup, node tracking, persistence, and tests.
 
 <p align="center">
   <img src="docs/images/project3-file-structure-memory.png" alt="In-memory directory and file metadata hierarchy used by the Project 3 FUSE filesystem" width="100%">
 </p>
 
-Key pieces of the Project 3 implementation include:
+How it works:
 
 - **Content-addressed block storage:** file data is split into 4 KB blocks, hashed with SHA-1, and stored in a shared block repository so repeated blocks can be referenced instead of duplicated.
 - **Reference-counted block lifetime:** metadata tracks how many files refer to each stored block so deletion and truncation can reclaim data safely.
 - **Free-space management and partial defragmentation:** unused repository slots are tracked through a circular free-block list, with partial defragmentation used to reduce external fragmentation.
 - **Persistent node hierarchy:** directories and files are represented through custom node metadata that is rebuilt into an in-memory hierarchy at mount time and written back on unmount.
 - **Full FUSE operation path:** file creation, deletion, reads, writes, truncation, directory operations, and rename behavior are handled in the filesystem layer.
-- **Automated and end-to-end testing:** Python `unittest` cases cover block reuse, compression behavior, truncation semantics, defragmentation, and nested file/directory hierarchies; the filesystem was also pushed beyond small synthetic tests by running a Minecraft server on top of it, until multithreaded world generation became the limiting factor.
+- **Automated and end-to-end testing:** Python `unittest` cases cover block reuse, compression behavior, truncation semantics, defragmentation, and nested file/directory hierarchies; as a larger stress test, a Minecraft server ran on top of the filesystem until multithreaded world generation became the bottleneck.
 
 <p align="center">
   <img src="docs/images/project3-free-blocks-list.png" alt="Circular free-block list used to reuse gaps in the Project 3 block repository" width="70%">
@@ -53,13 +53,13 @@ Key pieces of the Project 3 implementation include:
 
 ### Project 1 — kernel interfaces
 
-Project 1 contains Linux kernel-facing work: module builds, syscall-side experiments, sysfs exposure, and the final patch artifact used for the kernel changes. The project is organized into separate folders for each component so the module and user-space pieces can be inspected independently.
+Project 1 is kernel-side work: module builds, system-call experiments, a sysfs module, and the final kernel patch. Each component has its own folder.
 
 ### Project 2 — CPU scheduling
 
-Project 2 implements and evaluates scheduling behavior in a simulator. The `Scheduler_VM` tree includes workload configuration files, scheduler source code, scripts for running experiments, plotting support, and the final report at [`docs/reports/project-2-cpu-scheduling.pdf`](docs/reports/project-2-cpu-scheduling.pdf).
+Project 2 implements and evaluates scheduling policies in a simulator. The `Scheduler_VM` tree has workload configuration files, scheduler source code, scripts for running experiments, plotting support, and the final report at [`docs/reports/project-2-cpu-scheduling.pdf`](docs/reports/project-2-cpu-scheduling.pdf).
 
-The main comparison is between classic **Shortest Job First** and a modified SJF policy that combines expected CPU burst time with time spent waiting in the ready queue. Plain SJF can starve long/non-interactive jobs when many interactive jobs keep arriving; the modified goodness score trades some scheduler overhead for fairer CPU distribution.
+The main comparison is between classic **Shortest Job First** and a modified SJF policy that combines expected CPU burst time with time spent waiting in the ready queue. Plain SJF can starve long, non-interactive jobs while interactive jobs keep arriving. The modified goodness score costs some scheduler overhead and shares the CPU more fairly.
 
 <p align="center">
   <img src="docs/images/project2-scheduler-comparison.svg" alt="Project 2 scheduler comparison between classic SJF and wait-aware goodness scheduling" width="100%">
@@ -223,7 +223,7 @@ python3 -m unittest test
 
 ### Project 1 kernel work
 
-Project 1 contains source and patch artifacts for kernel-facing assignment components. Inspect the relevant folder for each part:
+Project 1 source and patches are split by component:
 
 ```text
 Project1/project1_find_roots/
@@ -231,4 +231,4 @@ Project1/project1_module/
 Project1/sysfs_module/
 ```
 
-Build commands depend on the kernel/module environment used for the assignment, but the source layout keeps each component separate for easier inspection and reuse.
+Build commands depend on the kernel source and headers used for the assignment.
